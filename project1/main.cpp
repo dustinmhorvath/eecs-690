@@ -10,10 +10,14 @@
 
 std::mutex coutMutex;
 
-void work(int trainNumber, int numStations, int* stationList)
+void choochoo(int trainNumber, int numStations, int* stationList)
 {
   coutMutex.lock();
-  std::cout << "I am train: " << trainNumber << "\n";
+  std::cout << "I am train " << trainNumber << " and my stationlist is ";
+  for(int i = 0; i < numStations; i++){
+    std::cout << stationList[i] << " ";
+  }
+  std::cout << "\n";
   coutMutex.unlock();
 }
 
@@ -62,20 +66,15 @@ int main(int argc, char* argv[])
   }
 
 
-  for (int i=0 ; i<numTrains ; i++){
-    // All parameters to the std::thread constructor after the
-    // first are passed as parameters to the function identified
-    // by the first parameter:
-    t[i] = new std::thread(work, i, 1, stationArray[i]);
+  for (int i = 0; i < numTrains; i++){
+    t[i] = new std::thread(choochoo, i, queueLength[i], stationArray[i]);
   }
 
   coutMutex.lock();
-  std::cout << "Hello from the parent thread.\n";
+  std::cout << "I'm HQ and we've got trains.\n";
   coutMutex.unlock();
 
   for (int i = 0; i < numTrains; i++){
-    // Wait until the i-th thread completes. It will complete
-    // when the given function ("work" in this case) exits.
     t[i]->join();
   }
 
