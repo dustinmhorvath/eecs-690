@@ -8,11 +8,15 @@
 #include "barrier.h"
 
 std::mutex coutMutex;
+std::mutex trainDecrementMutex;
 std::mutex** trainLineMutex;
 bool chillForASec = true;
 Barrier b;
 // Total trains, which I want accessible to threads.
 int numTrains;
+// Total station count
+int maxStations;
+
 
 void choochoo(int trainNumber, int numStations, int* stationList){
 
@@ -30,7 +34,8 @@ void choochoo(int trainNumber, int numStations, int* stationList){
   while(chillForASec);
 
   int currentStationIndex = 0;
-  while(currentStationIndex != numStations-1){
+  int timeStep = 0;
+  while(currentStationIndex < numStations-1){
     // Verbose for sanity's sake
     int currentStation = stationList[currentStationIndex];
     int nextStation = stationList[currentStationIndex+1];
@@ -42,28 +47,39 @@ void choochoo(int trainNumber, int numStations, int* stationList){
     if(trackLock.try_lock()){
 
       coutMutex.lock();      
-      std::cout << "I am train " << trainNumber << " moving from " << currentStation << " to " << nextStation 
-        << " locking [" << std::min(currentStation, nextStation) << "][" 
-        << std::max(currentStation, nextStation) << "]\n";
+      //std::cout << "At time step: " << timeStep << " train " << trainNumber << " is going from station " << currentStation << " to station " << nextStation << "\n";
+      std::cout << "At time step: " << timeStep << " train " << trainNumber << " is going from station " << currentStation << " to station " << nextStation << " locking [" << std::min(currentStation, nextStation) << "][" << std::max(currentStation, nextStation) << "]\n";
       coutMutex.unlock();
-      // Unlock after done
-      trackLock.unlock();
 
       currentStationIndex++;
-      
     }
     else{
       coutMutex.lock();
-      std::cout << "I am train " << trainNumber << " moving from " << currentStation << " to " << nextStation 
-        << " waiting for [" << std::min(currentStation, nextStation) << "][" 
-        << std::max(currentStation, nextStation) << "]\n";
+      std::cout << "At time step: " << timeStep << " train " << trainNumber << " must stay at station " << currentStation << "\n";
       coutMutex.unlock();
-      
     }
+    timeStep++;
 
+    // TODO sooomething before this barrier
+    
+
+    // Keep in sync
     b.barrier(numTrains);
+    
+    // Unlock after done
+    if(trackLock.owns_lock()){
+      trackLock.unlock();
+    }
+    if(trainNumber == 0){
+      std::cout << "\n";
+    }
+    
     b.barrier(numTrains);
+
   }
+
+  std::unique_lock<std::mutex> decrementUniqueLock(trainDecrementMutex);
+  numTrains--;
 
 }
 
@@ -81,13 +97,11 @@ int main(int argc, char* argv[])
 
   // Array holding length of route for each train
   int queueLength[numTrains];
-  // Total station count
-  int maxStations;
   std::getline(inFile, line);
   std::istringstream issQuick(line);
   issQuick >> numTrains;
   issQuick >> maxStations;
-  std::cout << numTrains << " " << maxStations << "\n";
+  //std::cout << numTrains << " " << maxStations << "\n";
 
   // Instantiate array to hold list of destinations for each train
   int** stationArray = new int*[numTrains];
@@ -106,12 +120,12 @@ int main(int argc, char* argv[])
   while(std::getline(inFile, line)){
     std::istringstream iss(line);
     iss >> queueLength[trainNum];
-    std::cout << queueLength[trainNum] << " ";
+    //std::cout << queueLength[trainNum] << " ";
     for(int i = 0; i < queueLength[trainNum]; i++){
       iss >> stationArray[trainNum][i];
-      std::cout << stationArray[trainNum][i] << " ";
+      //std::cout << stationArray[trainNum][i] << " ";
     }
-    std::cout << "\n";
+    //std::cout << "\n";
     trainNum++;
   }
 
@@ -131,6 +145,15 @@ int main(int argc, char* argv[])
   for (int i = 0; i < numTrains; i++){
     t[i]->join();
   }
+
+  for(int i = 0; i < numTrains; i++){
+    delete stationArray[i];
+  }
+  delete stationArray;
+  for(int i = 0; i < maxStations; i++){
+    delete trainLineMutex[i];
+  }
+  delete trainLineMutex;
 
   return 0;
 }
