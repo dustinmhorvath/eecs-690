@@ -64,11 +64,13 @@ void choochoo(int trainNumber, int numStations, int* stationList){
     // TODO sooomething before this barrier
     
 
+    // On a loop in which a train reaches its destination, store the number of
+    // trains running through these barriers before we go modifying it.
     int oldNumTrains = numTrains;
-    // Keep in sync
+    // Wait here for everyone to agree on the number of trains at barriers.
     b.barrier(numTrains);
     
-    // Unlock after done
+    // If you locked a track this time step, unlock it
     if(trackLock.owns_lock()){
       trackLock.unlock();
     }
@@ -76,20 +78,27 @@ void choochoo(int trainNumber, int numStations, int* stationList){
       std::cout << "\n";
     }
 
+    // For every train, check if you're finishing this time step, and update
+    // the total number of trains for the next loop.
     std::unique_lock<std::mutex> decrementUniqueLock(trainDecrementMutex);
     if(currentStationIndex == numStations-1){
       numTrains--;
     }
+    // Increment the counter so that other threads can later tell when all the
+    // threads have checked in on whether or not they finish this loop.
     trainCounter++;
     decrementUniqueLock.unlock();
 
+    // Wait in this while loop until trainCounter==oldNumTrains. This is
+    // basically an in-place adaptation of the barrier code, except the value
+    // of trainCounter is free to change on every iteration.
+    while(trainCounter < oldNumTrains);
+
     b.barrier(oldNumTrains);
 
-      while(trainCounter < oldNumTrains);
-
-    b.barrier(oldNumTrains);
-
-      trainCounter = 0;
+    // Once we're all through and numTrains has been adjusted, reset
+    // trainCounter for the next loop.
+    trainCounter = 0;
 
     b.barrier(oldNumTrains);
     
