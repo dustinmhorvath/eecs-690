@@ -16,6 +16,7 @@ Barrier b;
 int numTrains;
 // Total station count
 int maxStations;
+int trainCounter = 0;
 
 
 void choochoo(int trainNumber, int numStations, int* stationList){
@@ -63,6 +64,7 @@ void choochoo(int trainNumber, int numStations, int* stationList){
     // TODO sooomething before this barrier
     
 
+    int oldNumTrains = numTrains;
     // Keep in sync
     b.barrier(numTrains);
     
@@ -73,14 +75,27 @@ void choochoo(int trainNumber, int numStations, int* stationList){
     if(trainNumber == 0){
       std::cout << "\n";
     }
-    
-    b.barrier(numTrains);
 
+    std::unique_lock<std::mutex> decrementUniqueLock(trainDecrementMutex);
+    if(currentStationIndex == numStations-1){
+      numTrains--;
+    }
+    trainCounter++;
+    decrementUniqueLock.unlock();
+
+    b.barrier(oldNumTrains);
+
+      while(trainCounter < oldNumTrains);
+
+    b.barrier(oldNumTrains);
+
+      trainCounter = 0;
+
+    b.barrier(oldNumTrains);
+    
   }
 
-  std::unique_lock<std::mutex> decrementUniqueLock(trainDecrementMutex);
-  numTrains--;
-
+ 
 }
 
 int main(int argc, char* argv[])
@@ -101,7 +116,6 @@ int main(int argc, char* argv[])
   std::istringstream issQuick(line);
   issQuick >> numTrains;
   issQuick >> maxStations;
-  //std::cout << numTrains << " " << maxStations << "\n";
 
   // Instantiate array to hold list of destinations for each train
   int** stationArray = new int*[numTrains];
@@ -120,12 +134,9 @@ int main(int argc, char* argv[])
   while(std::getline(inFile, line)){
     std::istringstream iss(line);
     iss >> queueLength[trainNum];
-    //std::cout << queueLength[trainNum] << " ";
     for(int i = 0; i < queueLength[trainNum]; i++){
       iss >> stationArray[trainNum][i];
-      //std::cout << stationArray[trainNum][i] << " ";
     }
-    //std::cout << "\n";
     trainNum++;
   }
 
@@ -138,13 +149,11 @@ int main(int argc, char* argv[])
   // Wait until this flag is switched
   chillForASec = false;
 
-  //coutMutex.lock();
-  //std::cout << "I'm HQ and we've got trains.\n";
-  //coutMutex.unlock();
-
   for (int i = 0; i < numTrains; i++){
     t[i]->join();
   }
+
+  std::cout << "\nAll trains have reached their destinations.\n";
 
   for(int i = 0; i < numTrains; i++){
     delete stationArray[i];
