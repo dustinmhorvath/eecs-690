@@ -14,7 +14,7 @@
 #include "barrier.h"
 
 // For debug printing
-#define DEBUG_MODE true
+#define DEBUG_MODE false
 
 std::mutex coutMutex;
 std::mutex trainDecrementMutex;
