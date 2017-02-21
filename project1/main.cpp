@@ -1,3 +1,9 @@
+// Dustin Horvath
+// 2/20/17
+// Train Simulator: simulates trains travelling across single tracks to reach
+// destinations. Reads from file as stdin argument.
+
+
 #include <mutex>
 #include <thread>
 #include <iostream>
@@ -25,17 +31,23 @@ int trainCounter = 0;
 
 void choochoo(int trainNumber, int numStations, int* stationList){
 
-  coutMutex.lock();
-  std::cout << "I am train " << trainNumber << " and my stationlist is ";
-  for(int i = 0; i < numStations; i++){
-    std::cout << stationList[i] << " ";
-  }
-  std::cout << "\n";
-  coutMutex.unlock();
- 
-  b.barrier(totalTrains);
-  b.barrier(totalTrains);
+  if(DEBUG_MODE){
+    coutMutex.lock();
+    std::cout << "I am train " << trainNumber << " and my stationlist is ";
+    for(int i = 0; i < numStations; i++){
+      std::cout << stationList[i] << " ";
+    }
+    std::cout << "\n";
+    coutMutex.unlock();
 
+    b.barrier(totalTrains);
+    if(trainNumber == 0){
+      coutMutex.lock();
+      std::cout << "\n";
+      coutMutex.unlock();
+    }
+    b.barrier(totalTrains);
+  }
   while(chillForASec);
 
   int currentStationIndex = 0;
@@ -114,9 +126,9 @@ void choochoo(int trainNumber, int numStations, int* stationList){
  
 }
 
-int main(int argc, char* argv[])
-{
-
+int main(int argc, char* argv[]){
+  std::cout << "\n";
+  
   // Read data file from std
   if(argc < 2){
     std::cout << "Please provide a valid input data file. Ex: './Proj1 inputfile.txt'\n";
@@ -141,13 +153,14 @@ int main(int argc, char* argv[])
   }
 
   // Array of mutexes to represent train lines. Essentially an adjacency
-  // matrix where I assume all stations are adjacent. I'm only using no more
-  // than half of this array.
+  // matrix where I assume all stations are adjacent. I've got a '-i' down
+  // there, so the rows get shorter as it moves down.
   trainLineMutex = new std::mutex*[maxStations];
   for(int i = 0; i < maxStations; i++){
-    trainLineMutex[i] = new std::mutex[maxStations];
+    trainLineMutex[i] = new std::mutex[maxStations-i];
   }
 
+  // Read in each list of stations
   int trainNum = 0;
   while(std::getline(inFile, line)){
     std::istringstream iss(line);
@@ -158,11 +171,11 @@ int main(int argc, char* argv[])
     trainNum++;
   }
 
+  // create threads for each train
   std::thread** t = new std::thread*[totalTrains];
   for(int i = 0; i < totalTrains; i++){
     t[i] = new std::thread(choochoo, i, queueLength[i], stationArray[i]);
   }
-
   
   // Wait until this flag is switched
   chillForASec = false;
@@ -171,7 +184,7 @@ int main(int argc, char* argv[])
     t[i]->join();
   }
 
-  std::cout << "\nAll trains have reached their destinations.\n";
+  std::cout << "All trains have reached their destinations.\n";
 
   for(int i = 0; i < totalTrains; i++){
     delete stationArray[i];
