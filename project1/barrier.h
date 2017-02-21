@@ -1,6 +1,8 @@
 // One implementation of a barrier (when used in a loop like that of our
 // train simulation, this implemenration requires that "barrier" be
 // invoked twice with a different actual parameter for "bCounter"):
+
+/*
 void barrier(std::atomic<int>* bCounter, int numExpectedAtBarrier)
 {
 	bCounter[1]++; // used to know when to reset [0]
@@ -32,6 +34,8 @@ void barrier(int& bCounter, std::mutex& bMutex,
 		bCV.notify_all();
 	}
 }
+
+*/
 
 // A final "best" implementation based on creating a class whose sole purpose
 // is to provide a barrier.  To use this class, place the class definition
