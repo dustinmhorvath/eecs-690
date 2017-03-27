@@ -6,6 +6,8 @@
 #include <fstream>
 #include <vector>
 
+#include <boost/tokenizer.hpp>
+
 #define FIELDSIZE 256
 
 #define TEST true
@@ -95,25 +97,50 @@ static void process(int rank, int communicatorSize, int argc, char** arguments, 
 
 }
 
+// from here: http://stackoverflow.com/a/17750464/3833640
+std::string get_csv_column(std::ifstream & in){
+  std::string col;
+  unsigned quotes = 0;
+  char prev = 0;
+  bool finis = false;
+  for (int ch; !finis && (ch = in.get()) != EOF; ) {
+    switch(ch) {
+    case '"':
+      ++quotes;
+      break;
+    case ',':
+      if (quotes == 0 || (prev == '"' && (quotes & 1) == 0)) {
+        finis = true;
+      }
+      break;
+    default:;
+    }
+    col += prev = ch;
+  }
+  return col;
+}
+
 int* readFile(std::string filename){
 
-  int row = 0;
+  int row = 500;
   int col = 0;
+  int count = 0;
   {
-    std::ifstream file(filename);
+    std::ifstream infile( filename );
     std::string line;
-    while(std::getline(file, line)){
-      std::stringstream lineStream(line);
-      std::string field;
-      while(std::getline(lineStream, field,',')){
-        col++;
+    while(infile){
+      if (!getline( infile, line )) break;
+
+      boost::escaped_list_separator<char> sep("\\", ",", "\"");
+      boost::tokenizer<boost::escaped_list_separator<char>> tok(line, sep);
+      for(boost::tokenizer<boost::escaped_list_separator<char>>::iterator beg=tok.begin(); beg!=tok.end();++beg){
+        std::cout << *beg << "\n";
+        count++;
       }
-      row++;
+
     }
-    row--;
-    col--;
-    
-    
+  col = count/(row+1);
+  
   }
 
 
@@ -138,17 +165,30 @@ int* readFile(std::string filename){
   std::string line;
   int r = 0;
   int c = 0;
+/*
+  for (std::string column; fileStream; ) {
+    column = get_csv_column(fileStream);
+      std::cout << column << "\n";
+      strncpy(csvData[r][c], column.c_str(), FIELDSIZE);
+      csvData[r][c][FIELDSIZE] = '\0';
+    r++;
+    c++;
+    if(r%dim[1] == 0){
+      r = 0;
+    }
+  }
   
   while(std::getline(fileStream, line)){
     std::stringstream lineStream(line);
     std::string field;
     while(std::getline(lineStream, field,',')){
-
-      sprintf(csvData[r][c], "%.4s", field.c_str());
+      std::cout << field << "\n";
+      strncpy(csvData[r][c], field.c_str(), FIELDSIZE);
+      csvData[r][c][FIELDSIZE] = '\0';
       c++;
     }
     r++;
-  }
+  }*/
   
 
   return dim;
