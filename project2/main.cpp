@@ -23,22 +23,24 @@ enum Operation { MIN, MAX, AVG, NUMBER };
 
 
 
-static void do_rank_0_work_sr(int communicatorSize, int colIndex, int numRowsToWork, int numCols, int firstFieldTag, int secondFieldTag, int valueTag){
+static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int numRowsToWork, int numCols, int firstFieldTag, int secondFieldTag, int valueTag){
 
 	MPI_Request sendReq;
 
-	std::cout << "Sending data to other processes..." << std::endl;
+  if(rank == 0){
+	  std::cout << "Sending data to other processes..." << std::endl;
+  }
 
-  int* displs = (int*) malloc((FIELDSIZE+1)*sizeof(char)*(numCols));
-  char receiveBuffer[(FIELDSIZE+1)*3];
+  int displs = (FIELDSIZE+1)*sizeof(char)*numCols;
+  char* receiveBuffer = new char[(FIELDSIZE+1)*numRowsToWork];
   int receiveCount = numRowsToWork;
 
   MPI_Scatterv(
     &csvData[0][colIndex],
     &numRowsToWork,
-    displs,
+    &displs,
     MPI_CHAR,
-    &receiveBuffer,
+    receiveBuffer,
     receiveCount,
     MPI_CHAR,
     0,
@@ -53,7 +55,7 @@ static void do_rank_0_work_sr(int communicatorSize, int colIndex, int numRowsToW
   Operation op = MAX;
 
 	std::cout << "Waiting for the others to send me their results..." << std::endl;
-
+/*
   MPI_Reduce(
     &receiveBuffer,
     &receivedChars,
@@ -62,7 +64,7 @@ static void do_rank_0_work_sr(int communicatorSize, int colIndex, int numRowsToW
     MPI_MAX,
     0,
     MPI_COMM_WORLD);
-
+*/
 
 
 }
@@ -71,15 +73,14 @@ static void do_rank_0_work_sr(int communicatorSize, int colIndex, int numRowsToW
 static void process(int rank, int communicatorSize, int argc, Mode mode, int* dimensions){
   std::string processString = "Executing query as ";
   if(mode == SR){
-    int colIndex;
-    int numRowsToWork = 500/communicatorSize;
+    //TODO get this column index dynamically
+    int colIndex = 3;
+    int numRowsToWork = (dimensions[0]-1)/communicatorSize;
     int firstFieldTag = 0;
     int secondFieldTag = 1;
     int valueTag= 2;
-    if(rank == 0){
-      std::cout << processString << "Scatter-Reduce...\n";
-      //do_rank_0_work_sr(communicatorSize, colIndex, numRowsToWork, dimensions[1], firstFieldTag, secondFieldTag, valueTag);
-    }
+      if(rank == 0) std::cout << processString << "Scatter-Reduce...\n";
+      do_rank_0_work_sr(communicatorSize, rank, colIndex, numRowsToWork, dimensions[1], firstFieldTag, secondFieldTag, valueTag);
 
   }
   /*
