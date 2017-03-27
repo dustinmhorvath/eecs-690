@@ -68,17 +68,17 @@ static void do_rank_0_work_sr(int communicatorSize, int colIndex, int numRowsToW
 }
 
 
-static void process(int rank, int communicatorSize, int argc, char** arguments, int* dimensions){
+static void process(int rank, int communicatorSize, int argc, Mode mode, int* dimensions){
   std::string processString = "Executing query as ";
-  if(arguments[1] == std::string("sr")){
+  if(mode == SR){
     int colIndex;
-    int numRowsToWork = 500/rank;
+    int numRowsToWork = 500/communicatorSize;
     int firstFieldTag = 0;
     int secondFieldTag = 1;
     int valueTag= 2;
     if(rank == 0){
       std::cout << processString << "Scatter-Reduce...\n";
-      do_rank_0_work_sr(communicatorSize, colIndex, numRowsToWork, dimensions[1], firstFieldTag, secondFieldTag, valueTag);
+      //do_rank_0_work_sr(communicatorSize, colIndex, numRowsToWork, dimensions[1], firstFieldTag, secondFieldTag, valueTag);
     }
 
   }
@@ -98,10 +98,11 @@ static void process(int rank, int communicatorSize, int argc, char** arguments, 
 }
 
 
-
+// Takes a filename, stores all the data in csvData and returns an int[2] that
+// contains [rows][columns]
 int* readFile(std::string filename){
 
-  int row = 500;
+  int row = 0;
   int col = 0;
   int count = 0;
   {
@@ -115,9 +116,11 @@ int* readFile(std::string filename){
       for(boost::tokenizer<boost::escaped_list_separator<char>>::iterator beg=tok.begin(); beg!=tok.end();++beg){
         count++;
       }
+      col = count;
+      count = 0;
+      row++;
 
     }
-  col = count/(row+1);
   
   }
 
@@ -129,11 +132,11 @@ int* readFile(std::string filename){
     std::cout << dim[0] << " " << dim[1] << "\n";
   }
 
-
-  csvData = new char**[dim[0]];
-  for(int i = 0; i < dim[0]; i++){
+  // csvData is only holding the 500 rows, not the header
+  csvData = new char**[dim[0]-1];
+  for(int i = 0; i < dim[0]-1; i++){
     csvData[i] = new char*[dim[1]];
-    for(int j = 0; j < dim[0]; j++){
+    for(int j = 0; j < dim[1]; j++){
       csvData[i][j] = new char[FIELDSIZE+1];
     }
   }
@@ -187,9 +190,7 @@ int main (int argc, char **argv){
     return 0;
   }
 
-  if(rank == 0){
-    int* dimensions = readFile(inputFile);
-  }
+  int* dimensions = readFile(inputFile);
 
 	if (argc < 4){
 		if (rank == 0){
@@ -197,7 +198,10 @@ int main (int argc, char **argv){
     }
 	}
 	else {
-  //  process(rank, communicatorSize, argc, argv, dimensions);
+    Mode mode = SR;
+    //TODO string array of argvs?
+
+    process(rank, communicatorSize, argc, mode, dimensions);
 	}
 
 
