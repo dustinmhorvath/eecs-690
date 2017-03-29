@@ -14,7 +14,7 @@
 
 // This array is only valid for rank 0. Don't expect rank1+ to have access.
 int* dim = new int[2];
-char*** csvData;
+char* csvData;
 
 enum Mode { SR , BG };
 enum Operation { MIN, MAX, AVG, NUMBER };
@@ -25,46 +25,74 @@ enum Operation { MIN, MAX, AVG, NUMBER };
 
 static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int numRowsToWork, int numCols, int firstFieldTag, int secondFieldTag, int valueTag){
 
-	MPI_Request sendReq;
+	MPI_Request dataReq;
 
-  if(rank == 0){
-	  std::cout << "Sending data to other processes..." << std::endl;
+  if(rank == 0) std::cout << "Sending data to other processes..." << std::endl;
+
+  if(rank==1){
+    std::cout << "I am rank 1 with numRowsToWork=" << numRowsToWork << " and numCols=" << numCols << " and colIndex=" << colIndex << "\n";
   }
 
-  int displs = (FIELDSIZE+1)*sizeof(char)*numCols;
+  int displs[communicatorSize];
   char* receiveBuffer = new char[(FIELDSIZE+1)*numRowsToWork];
-  int receiveCount = numRowsToWork;
+  int receiveCount = numRowsToWork*(FIELDSIZE+1);
+  int sendCounts[communicatorSize];
+  for(int i = 0; i < communicatorSize; i++){
+    sendCounts[i] = numRowsToWork*(FIELDSIZE+1);
+    displs[i] = numCols*(FIELDSIZE+1)*numRowsToWork*i;
+  }
 
-  MPI_Scatterv(
-    &csvData[0][colIndex],
-    &numRowsToWork,
-    &displs,
+  if(rank==0){
+    MPI_Iscatterv(
+    &csvData[colIndex*(FIELDSIZE+1)],
+    sendCounts,
+    displs,
     MPI_CHAR,
     receiveBuffer,
     receiveCount,
     MPI_CHAR,
     0,
-    MPI_COMM_WORLD);
-  
+    MPI_COMM_WORLD,
+    &dataReq);
+  }
+  else {
+    MPI_Iscatterv(
+    nullptr,
+    0,
+    displs,
+    MPI_CHAR,
+    receiveBuffer,
+    receiveCount,
+    MPI_CHAR,
+    0,
+    MPI_COMM_WORLD,
+    &dataReq);
+  }
 
-	std::cout << "Doing rank0 work..." << std::endl;
-  char returnChars[(FIELDSIZE+1)*3];
-  char receivedChars[communicatorSize][(FIELDSIZE+1)*3];
+  MPI_Status dataStatus;
+  if(rank!=0) MPI_Waitall(1, &dataReq, &dataStatus);
+
+	if(rank == 0) std::cout << "Doing rank0 work..." << std::endl;
+  char returningChars[3][(FIELDSIZE+1)];
 
   Mode mode = SR;
   Operation op = MAX;
 
-	std::cout << "Waiting for the others to send me their results..." << std::endl;
-/*
+	if(rank == 0) std::cout << "Waiting for the others to send me their results..." << std::endl;
+
+  std::cout << "I am rank " << rank << " and I have " << &receiveBuffer[0] << " as 1st element.\n";
+
   MPI_Reduce(
-    &receiveBuffer,
-    &receivedChars,
+    receiveBuffer,
+    &returningChars[0][0],
     (FIELDSIZE+1)*3,
     MPI_CHAR,
     MPI_MAX,
     0,
     MPI_COMM_WORLD);
-*/
+
+  std::cout << "Rank " << rank << " has completed work.\n";
+
 
 
 }
@@ -74,7 +102,7 @@ static void process(int rank, int communicatorSize, int argc, Mode mode, int* di
   std::string processString = "Executing query as ";
   if(mode == SR){
     //TODO get this column index dynamically
-    int colIndex = 3;
+    int colIndex = 0;
     int numRowsToWork = (dimensions[0]-1)/communicatorSize;
     int firstFieldTag = 0;
     int secondFieldTag = 1;
@@ -134,14 +162,14 @@ int* readFile(std::string filename){
   }
 
   // csvData is only holding the 500 rows, not the header
-  csvData = new char**[dim[0]-1];
-  for(int i = 0; i < dim[0]-1; i++){
+  csvData = new char[(dim[0]-1)*dim[1]*(FIELDSIZE+1)];
+/*  for(int i = 0; i < dim[0]-1; i++){
     csvData[i] = new char*[dim[1]];
     for(int j = 0; j < dim[1]; j++){
       csvData[i][j] = new char[FIELDSIZE+1];
     }
   }
-
+*/
 
   int r = 0;
   int c = 0;
@@ -161,8 +189,8 @@ int* readFile(std::string filename){
       for(boost::tokenizer<boost::escaped_list_separator<char>>::iterator beg=tok.begin(); beg!=tok.end();++beg){
         std::string field = *beg;
         //std::cout << field << "\n";
-        strncpy(csvData[r][c], field.c_str(), FIELDSIZE);
-        csvData[r][c][FIELDSIZE] = '\0';
+        strncpy(&csvData[ r*dim[1]*(FIELDSIZE+1) + (FIELDSIZE+1)*c ], field.c_str(), FIELDSIZE);
+        csvData[r*dim[1]*(FIELDSIZE+1)+(c*FIELDSIZE)+FIELDSIZE] = '\0';
         c++;
       }
       
@@ -208,7 +236,7 @@ int main (int argc, char **argv){
 
 
   if(TEST && rank == 0){
-    std::cout << std::string(csvData[3][3]) << "\n";
+    std::cout << "A value " << &csvData[dim[1]*2*(FIELDSIZE+1) + (FIELDSIZE+1)*2] << "\n";
   }
 
   
