@@ -23,7 +23,7 @@ enum Operation { MIN, MAX, AVG, NUMBER };
 
 
 
-static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int numRowsToWork, int numCols, int firstFieldTag, int secondFieldTag, int valueTag){
+static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int numRowsToWork, int numCols, Operation op, int firstFieldTag, int secondFieldTag, int valueTag){
 
 	MPI_Request dataReq;
 
@@ -37,13 +37,13 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
   char* receiveBuffer = new char[(FIELDSIZE+1)*numRowsToWork];
   int receiveCount = numRowsToWork*(FIELDSIZE+1);
   int sendCounts[communicatorSize];
+  // Man, it took me a long time to figure out how this actually worked =/
   for(int i = 0; i < communicatorSize; i++){
     sendCounts[i] = numRowsToWork*(FIELDSIZE+1);
     displs[i] = numCols*(FIELDSIZE+1)*numRowsToWork*i;
   }
 
-  if(rank==0){
-    MPI_Iscatterv(
+  MPI_Iscatterv(
     &csvData[colIndex*(FIELDSIZE+1)],
     sendCounts,
     displs,
@@ -54,51 +54,83 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
     0,
     MPI_COMM_WORLD,
     &dataReq);
-  }
-  else {
-    MPI_Iscatterv(
-    nullptr,
-    0,
-    displs,
-    MPI_CHAR,
-    receiveBuffer,
-    receiveCount,
-    MPI_CHAR,
-    0,
-    MPI_COMM_WORLD,
-    &dataReq);
-  }
+
 
   MPI_Status dataStatus;
   if(rank!=0) MPI_Waitall(1, &dataReq, &dataStatus);
 
 	if(rank == 0) std::cout << "Doing rank0 work..." << std::endl;
-  char returningChars[3][(FIELDSIZE+1)];
-
-  Mode mode = SR;
-  Operation op = MAX;
 
 	if(rank == 0) std::cout << "Waiting for the others to send me their results..." << std::endl;
 
-  std::cout << "I am rank " << rank << " and I have " << &receiveBuffer[0] << " as 1st element.\n";
+  //std::cout << "I am rank " << rank << " and I have " << &receiveBuffer[0+(FIELDSIZE+1)*1] << " as 1st element.\n";
+ 
+  int currentRowIndex = 0;
+  int valueRowIndex = 0;
+  int value = strtol(&receiveBuffer[0],NULL,0);
+  switch(op){
+    case MAX:
+      for(int i = 0; i < numRowsToWork; i++){
+        int valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
 
+        if(valueAtCurrentIndex > value){
+          value = valueAtCurrentIndex;
+          valueRowIndex = i;
+        }
+      }
+      break;
+    case MIN:
+      for(int i = 0; i < numRowsToWork; i++){
+        int valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
+
+        if(valueAtCurrentIndex < value){
+          value = valueAtCurrentIndex;
+          valueRowIndex = i;
+        }
+      }
+      break;
+    case AVG:
+    int sum = 0;
+      for(int i = 0; i < numRowsToWork; i++){
+        int valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
+        sum += valueAtCurrentIndex;
+
+      }
+      value = sum/numRowsToWork;
+      break;
+
+    break;
+
+
+  }
+  int* sendBuffer = new int[1];
+  int* receiveIntBuffer = new int[1];
+
+  // Sending:
+  // RANK
+  // VALUE
+  // ROW INDEX OF VALUE
+  sendBuffer[0] = value;
+
+
+  // This seems to return whatever sendBuffer contains the max/min/etc value
   MPI_Reduce(
-    receiveBuffer,
-    &returningChars[0][0],
-    (FIELDSIZE+1)*3,
-    MPI_CHAR,
-    MPI_MAX,
+    sendBuffer,
+    receiveIntBuffer,
+    3,
+    MPI_INT,
+    MPI_MIN,
     0,
     MPI_COMM_WORLD);
 
-  std::cout << "Rank " << rank << " has completed work.\n";
+  if(rank==0) std::cout << "Rank " << rank << " has finished with " << receiveIntBuffer[0] << "\n";
 
 
 
 }
 
 
-static void process(int rank, int communicatorSize, int argc, Mode mode, int* dimensions){
+static void process(int rank, int communicatorSize, int argc, Mode mode, Operation op, int* dimensions){
   std::string processString = "Executing query as ";
   if(mode == SR){
     //TODO get this column index dynamically
@@ -108,7 +140,7 @@ static void process(int rank, int communicatorSize, int argc, Mode mode, int* di
     int secondFieldTag = 1;
     int valueTag= 2;
       if(rank == 0) std::cout << processString << "Scatter-Reduce...\n";
-      do_rank_0_work_sr(communicatorSize, rank, colIndex, numRowsToWork, dimensions[1], firstFieldTag, secondFieldTag, valueTag);
+      do_rank_0_work_sr(communicatorSize, rank, colIndex, numRowsToWork, dimensions[1], op, firstFieldTag, secondFieldTag, valueTag);
 
   }
   /*
@@ -221,17 +253,50 @@ int main (int argc, char **argv){
 
   int* dimensions = readFile(inputFile);
 
-	if (argc < 4){
+  if (argc < 4){
 		if (rank == 0){
 			std::cout << "At least 3 arguments will be required.\n";
+      MPI_Finalize();
+      return 0;
     }
 	}
-	else {
-    Mode mode = SR;
-    //TODO string array of argvs?
 
-    process(rank, communicatorSize, argc, mode, dimensions);
-	}
+  Mode mode;
+  Operation op;
+  if(std::string(argv[1]) == "sr"){
+    mode = SR;
+  }
+  else if(std::string(argv[1]) == "bg"){
+    mode = BG;
+  }
+  else{
+    std::cout << "Invalid mode " << argv[1] << "\n";
+    MPI_Finalize();
+    return 0;
+  }
+
+
+  if(std::string(argv[2]) == "max"){
+    op = MAX;
+  }
+  else if(std::string(argv[2]) == "min"){
+    op = MIN;
+  }  
+  else if(std::string(argv[2]) == "avg"){
+    op = AVG;
+  }
+  else if(std::string(argv[2]) == "number"){
+    op = NUMBER;
+  }
+  else{
+    std::cout << "Invalid operation " << argv[2] << "\n";
+    MPI_Finalize();
+    return 0;
+  }
+
+
+
+  process(rank, communicatorSize, argc, mode, op, dimensions);
 
 
 
