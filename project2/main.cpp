@@ -127,9 +127,9 @@ static void do_sr_work(int communicatorSize, int rank, int colIndex, int numRows
       value = sum;
     break;
 
-
-
   }
+
+
   double* sendBuffer = new double[1];
   double* receiveDoubleBuffer = new double[1];
 
@@ -148,32 +148,37 @@ static void do_sr_work(int communicatorSize, int rank, int colIndex, int numRows
 
   if(rank==0) {
     switch(op){
-        char stringBuffer[FIELDSIZE+1];
+      char stringBuffer[FIELDSIZE+1];
+
       case MAX:
       case MIN:
         std::cout << std::fixed;
         std::cout << std::setprecision(2);
-
         memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
         stringBuffer[FIELDSIZE] = '\0';
-        std::cout <<  std::string(stringBuffer) << 
+                std::cout <<  std::string(stringBuffer) << 
                       " = " <<
                       receiveDoubleBuffer[0] <<
                       "\n";
       break;
       case AVG:
+        std::cout << std::fixed;
+        std::cout << std::setprecision(2);
         memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
         stringBuffer[FIELDSIZE] = '\0';
 
-        std::cout <<  std::string(stringBuffer) << 
+        std::cout <<  "Average " << 
+                      std::string(stringBuffer) << 
                       " = " <<
                       receiveDoubleBuffer[0]/communicatorSize <<
                       "\n";
       break;
-      case NUMGT: 
+
+      case NUMGT:
+        std::cout << std::fixed;
+        std::cout << std::setprecision(2);
         memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
         stringBuffer[FIELDSIZE] = '\0';
-
         std::cout <<  "Number cities with " <<
                       std::string(stringBuffer) << 
                       " gt " <<
@@ -183,9 +188,10 @@ static void do_sr_work(int communicatorSize, int rank, int colIndex, int numRows
                       "\n";
       break;
       case NUMLT: 
+        std::cout << std::fixed;
+        std::cout << std::setprecision(2);
         memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
         stringBuffer[FIELDSIZE] = '\0';
-
         std::cout <<  "Number cities with " <<
                       std::string(stringBuffer) << 
                       " lt " <<
