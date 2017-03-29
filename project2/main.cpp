@@ -69,29 +69,18 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
   switch(op){
     case MAX:
       for(int i = 0; i < numRowsToWork; i++){
-        char stringBuffer[FIELDSIZE+1];
-        memcpy(stringBuffer, &receiveBuffer[(FIELDSIZE+1)*i], FIELDSIZE);
-        stringBuffer[FIELDSIZE] = '\0';
-        std::cout << stringBuffer << "\n";
-
-        double valueAtCurrentIndex = 0;//std::stoi(stringBuffer);
-
-        //std::cout << valueAtCurrentIndex << "\n";
+        double valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
 
         if(valueAtCurrentIndex > value){
           value = valueAtCurrentIndex;
           valueRowIndex = i;
         }
       }
+
       break;
     case MIN:
       for(int i = 0; i < numRowsToWork; i++){
-        char stringBuffer[FIELDSIZE+1];
-        memcpy(stringBuffer, &receiveBuffer[(FIELDSIZE+1)*i], FIELDSIZE);
-        stringBuffer[FIELDSIZE] = '\0';
-        std::cout << stringBuffer << "\n";
-
-        double valueAtCurrentIndex = value;
+        double valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
 
         if(valueAtCurrentIndex < value){
           value = valueAtCurrentIndex;
@@ -107,9 +96,8 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
 
       }
       value = sum/numRowsToWork;
-      break;
-
     break;
+
 
 
   }
@@ -131,7 +119,28 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
     MPI_COMM_WORLD);
 
   if(rank==0) {
-    std::cout <<  << rank << " has finished with " << receiveDoubleBuffer[0] << "\n";
+    switch(op){
+        char stringBuffer[FIELDSIZE+1];
+      case MAX:
+      case MIN:
+        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
+        stringBuffer[FIELDSIZE] = '\0';
+        std::cout <<  std::string(stringBuffer) << 
+                      " = " <<
+                      receiveDoubleBuffer[0] <<
+                      "\n";
+      break;
+      case AVG:
+        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
+        stringBuffer[FIELDSIZE] = '\0';
+
+        std::cout <<  std::string(stringBuffer) << 
+                      " = " <<
+                      receiveDoubleBuffer[0] <<
+                      "\n";
+      break;
+
+    }
 
   }
 
