@@ -5,6 +5,7 @@
 #include <sstream>
 #include <fstream>
 #include <vector>
+#include <iomanip>
 
 #include <boost/tokenizer.hpp>
 
@@ -18,13 +19,13 @@ char* csvData;
 char* headerData;
 
 enum Mode { SR , BG };
-enum Operation { MIN, MAX, AVG, NUMBER };
+enum Operation { MIN, MAX, AVG, NUMGT, NUMLT };
 
 //static void performOperation(Mode mode, Operation op, receiveBuffer, int numRowsToWork);
 
 
 
-static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int numRowsToWork, int numCols, Operation op, int firstFieldTag, int secondFieldTag, int valueTag){
+static void do_sr_work(int communicatorSize, int rank, int colIndex, int numRowsToWork, int numCols, Operation op, int bound, int firstFieldTag, int secondFieldTag, int valueTag){
 
 	MPI_Request dataReq;
 
@@ -63,9 +64,12 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
     std::cout << "I am rank " << rank << " and I have " << &receiveBuffer[(FIELDSIZE+1)*i] << " as " << i << "th element.\n";
   }
 */
+  
+  MPI_Op reduceOperation;
   int currentRowIndex = 0;
   int valueRowIndex = 0;
   double value = strtol(&receiveBuffer[0],NULL,0);
+  double sum = 0;
   switch(op){
     case MAX:
       for(int i = 0; i < numRowsToWork; i++){
@@ -76,8 +80,10 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
           valueRowIndex = i;
         }
       }
+      reduceOperation = MPI_MAX;
 
-      break;
+    break;
+    
     case MIN:
       for(int i = 0; i < numRowsToWork; i++){
         double valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
@@ -87,15 +93,38 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
           valueRowIndex = i;
         }
       }
-      break;
+      reduceOperation = MPI_MIN;
+    break;
+    
     case AVG:
-    double sum = 0;
       for(int i = 0; i < numRowsToWork; i++){
         double valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
         sum += valueAtCurrentIndex;
-
       }
       value = sum/numRowsToWork;
+      reduceOperation = MPI_SUM;
+    break;
+    
+    case NUMGT:
+      for(int i = 0; i < numRowsToWork; i++){
+        double valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
+        if(valueAtCurrentIndex > bound){
+          sum++;
+        }
+      }
+      reduceOperation = MPI_SUM;
+      value = sum;
+    break;
+    
+    case NUMLT:
+      for(int i = 0; i < numRowsToWork; i++){
+        double valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
+        if(valueAtCurrentIndex < bound){
+          sum++;
+        }
+      }
+      reduceOperation = MPI_SUM;
+      value = sum;
     break;
 
 
@@ -104,17 +133,16 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
   double* sendBuffer = new double[1];
   double* receiveDoubleBuffer = new double[1];
 
-  // Contains value that will be send back to rank 0
+  // Contains value that will be sent back to rank 0
   sendBuffer[0] = value;
-
 
   // This seems to return whatever sendBuffer contains the max/min/etc value
   MPI_Reduce(
     sendBuffer,
     receiveDoubleBuffer,
-    3,
+    1,
     MPI_DOUBLE,
-    MPI_MIN,
+    reduceOperation,
     0,
     MPI_COMM_WORLD);
 
@@ -123,6 +151,9 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
         char stringBuffer[FIELDSIZE+1];
       case MAX:
       case MIN:
+        std::cout << std::fixed;
+        std::cout << std::setprecision(2);
+
         memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
         stringBuffer[FIELDSIZE] = '\0';
         std::cout <<  std::string(stringBuffer) << 
@@ -136,10 +167,33 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
 
         std::cout <<  std::string(stringBuffer) << 
                       " = " <<
+                      receiveDoubleBuffer[0]/communicatorSize <<
+                      "\n";
+      break;
+      case NUMGT: 
+        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
+        stringBuffer[FIELDSIZE] = '\0';
+
+        std::cout <<  "Number cities with " <<
+                      std::string(stringBuffer) << 
+                      " gt " <<
+                      bound << 
+                      " = " <<
                       receiveDoubleBuffer[0] <<
                       "\n";
       break;
+      case NUMLT: 
+        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
+        stringBuffer[FIELDSIZE] = '\0';
 
+        std::cout <<  "Number cities with " <<
+                      std::string(stringBuffer) << 
+                      " lt " <<
+                      bound << 
+                      " = " <<
+                      receiveDoubleBuffer[0] <<
+                      "\n";
+      break;
     }
 
   }
@@ -149,7 +203,7 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
 }
 
 
-static void process(int rank, int communicatorSize, int argc, char** argv, Mode mode, Operation op, int* dimensions){
+static void process(int rank, int communicatorSize, int argc, char** argv, Mode mode, Operation op, int bound, int* dimensions){
 
 
 
@@ -164,6 +218,8 @@ static void process(int rank, int communicatorSize, int argc, char** argv, Mode 
       colIndex += (int)argv[3][1] - (int)'A';
     }
 
+    
+
 
 
     //TODO get this column index dynamically
@@ -173,7 +229,7 @@ static void process(int rank, int communicatorSize, int argc, char** argv, Mode 
     int valueTag= 2;
     
     if(rank == 0) std::cout << processString << "Scatter-Reduce...\n";
-    do_rank_0_work_sr(communicatorSize, rank, colIndex, numRowsToWork, dimensions[1], op, firstFieldTag, secondFieldTag, valueTag);
+    do_sr_work(communicatorSize, rank, colIndex, numRowsToWork, dimensions[1], op, bound, firstFieldTag, secondFieldTag, valueTag);
 
   }
   /*
@@ -319,7 +375,7 @@ int main (int argc, char **argv){
     return 0;
   }
 
-
+  int bound = 0;
   if(std::string(argv[2]) == "max"){
     op = MAX;
   }
@@ -329,9 +385,15 @@ int main (int argc, char **argv){
   else if(std::string(argv[2]) == "avg"){
     op = AVG;
   }
-  else if(std::string(argv[2]) == "number"){
-    op = NUMBER;
+  else if(std::string(argv[2]) == "number" && std::string(argv[4]) == "gt"){
+    op = NUMGT;
+    bound = std::stoi(std::string(argv[5]));
   }
+  else if(std::string(argv[2]) == "number" && std::string(argv[4]) == "lt"){
+    op = NUMLT;
+    bound = std::stoi(std::string(argv[5]));
+  }
+
   else{
     std::cout << "Invalid operation " << argv[2] << "\n";
     MPI_Finalize();
@@ -340,7 +402,7 @@ int main (int argc, char **argv){
 
 
 
-  process(rank, communicatorSize, argc, argv, mode, op, dimensions);
+  process(rank, communicatorSize, argc, argv, mode, op, bound, dimensions);
 
   /*
   if(rank == 0){
