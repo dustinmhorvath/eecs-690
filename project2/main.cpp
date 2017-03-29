@@ -33,24 +33,16 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
     std::cout << "I am rank 1 with numRowsToWork=" << numRowsToWork << " and numCols=" << numCols << " and colIndex=" << colIndex << "\n";
   }
 
-  int* displs = new int[communicatorSize];
   char* receiveBuffer = new char[(FIELDSIZE+1)*numRowsToWork];
-  int receiveCount = (FIELDSIZE+1);
-  int* sendCounts = new int[communicatorSize];
-  // Man, it took me a long time to figure out how this actually worked =/
-  for(int i = 0; i < communicatorSize; ++i){
-    //sendCounts[i] = (FIELDSIZE+1)*numRowsToWork;
-    sendCounts[i] = (FIELDSIZE+1);
-    displs[i] = numCols*i*(FIELDSIZE+1);
-  }
+  int sendCount = (FIELDSIZE+1)*numRowsToWork;
 
 
   MPI_Iscatter(
-    &csvData[colIndex*((FIELDSIZE+1)*numCols)],
-    (FIELDSIZE+1),
+    &csvData[colIndex*(FIELDSIZE+1)*(numRowsToWork*communicatorSize)],
+    sendCount,
     MPI_CHAR,
     receiveBuffer,
-    receiveCount,
+    sendCount,
     MPI_CHAR,
     0,
     MPI_COMM_WORLD,
@@ -65,7 +57,7 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
 
 	if(rank == 0) std::cout << "Waiting for the others to send me their results..." << std::endl;
 
-  for(int i = 1; i < 2; i++){
+  for(int i = 1; i < numRowsToWork; i++){
     std::cout << "I am rank " << rank << " and I have " << &receiveBuffer[(FIELDSIZE+1)*i] << " as " << i << "th element.\n";
   }
  
@@ -78,7 +70,7 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
         char stringBuffer[FIELDSIZE+1];
         memcpy(stringBuffer, &receiveBuffer[(FIELDSIZE+1)*i], FIELDSIZE);
         stringBuffer[FIELDSIZE] = '\0';
-//        std::cout << stringBuffer << "\n";
+        //std::cout << stringBuffer << "\n";
 
         int valueAtCurrentIndex = 0;//std::stoi(stringBuffer);
 
@@ -238,8 +230,8 @@ int* readFile(std::string filename){
       for(boost::tokenizer<boost::escaped_list_separator<char>>::iterator beg=tok.begin(); beg!=tok.end();++beg){
         std::string field = *beg;
         //std::cout << field << "\n";
-        strncpy(&csvData[ c*dim[1]*(FIELDSIZE+1) + (FIELDSIZE+1)*r ], field.c_str(), FIELDSIZE);
-        csvData[c*dim[1]*(FIELDSIZE+1)+(r*FIELDSIZE)+FIELDSIZE] = '\0';
+        strncpy(&csvData[ c*(dim[0]-1)*(FIELDSIZE+1) + (FIELDSIZE+1)*r ], field.c_str(), FIELDSIZE+1);
+        csvData[c*(dim[1]-1)*(FIELDSIZE+1)+(r*FIELDSIZE)+FIELDSIZE] = '\0';
         c++;
       }
       
@@ -317,6 +309,13 @@ int main (int argc, char **argv){
 
   process(rank, communicatorSize, argc, argv, mode, op, dimensions);
 
+  /*
+  if(rank == 0){
+    for(int i = 0; i < dim[0]-1; i++){
+      std::cout << i << " " << &csvData[(FIELDSIZE+1)*i+(FIELDSIZE+1)*(dim[0]-1)*2] << "\n";
+    }
+  }
+  */
 
 
 	MPI_Finalize();
