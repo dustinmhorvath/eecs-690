@@ -15,6 +15,7 @@
 // This array is only valid for rank 0. Don't expect rank1+ to have access.
 int* dim = new int[2];
 char* csvData;
+char* headerData;
 
 enum Mode { SR , BG };
 enum Operation { MIN, MAX, AVG, NUMBER };
@@ -64,7 +65,7 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
 */
   int currentRowIndex = 0;
   int valueRowIndex = 0;
-  int value = strtol(&receiveBuffer[0],NULL,0);
+  double value = strtol(&receiveBuffer[0],NULL,0);
   switch(op){
     case MAX:
       for(int i = 0; i < numRowsToWork; i++){
@@ -73,7 +74,7 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
         stringBuffer[FIELDSIZE] = '\0';
         std::cout << stringBuffer << "\n";
 
-        int valueAtCurrentIndex = 0;//std::stoi(stringBuffer);
+        double valueAtCurrentIndex = 0;//std::stoi(stringBuffer);
 
         //std::cout << valueAtCurrentIndex << "\n";
 
@@ -90,7 +91,7 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
         stringBuffer[FIELDSIZE] = '\0';
         std::cout << stringBuffer << "\n";
 
-        int valueAtCurrentIndex = value;
+        double valueAtCurrentIndex = value;
 
         if(valueAtCurrentIndex < value){
           value = valueAtCurrentIndex;
@@ -99,9 +100,9 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
       }
       break;
     case AVG:
-    int sum = 0;
+    double sum = 0;
       for(int i = 0; i < numRowsToWork; i++){
-        int valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
+        double valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
         sum += valueAtCurrentIndex;
 
       }
@@ -112,27 +113,27 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
 
 
   }
-  int* sendBuffer = new int[1];
-  int* receiveIntBuffer = new int[1];
+  double* sendBuffer = new double[1];
+  double* receiveDoubleBuffer = new double[1];
 
-  // Sending:
-  // RANK
-  // VALUE
-  // ROW INDEX OF VALUE
+  // Contains value that will be send back to rank 0
   sendBuffer[0] = value;
 
 
   // This seems to return whatever sendBuffer contains the max/min/etc value
   MPI_Reduce(
     sendBuffer,
-    receiveIntBuffer,
+    receiveDoubleBuffer,
     3,
-    MPI_INT,
+    MPI_DOUBLE,
     MPI_MIN,
     0,
     MPI_COMM_WORLD);
 
-  if(rank==0) std::cout << "Rank " << rank << " has finished with " << receiveIntBuffer[0] << "\n";
+  if(rank==0) {
+    std::cout <<  << rank << " has finished with " << receiveDoubleBuffer[0] << "\n";
+
+  }
 
 
 
@@ -216,6 +217,7 @@ int* readFile(std::string filename){
   dim[1] = col;
 
   csvData = new char[(dim[0]-1)*dim[1]*(FIELDSIZE+1)];
+  headerData = new char[(dim[0]-1)*(FIELDSIZE+1)];
 
   int r = 0;
   int c = 0;
@@ -223,8 +225,26 @@ int* readFile(std::string filename){
   {
     std::ifstream infile( filename );
     std::string line;
-    // TODO consuming column line for now
+    
+    //Consume header line
     getline( infile, line );
+    
+    {
+      boost::escaped_list_separator<char> sep("\\", ",", "\"");
+      boost::tokenizer<boost::escaped_list_separator<char>> tok(line, sep);
+      c=0;
+      
+      for(boost::tokenizer<boost::escaped_list_separator<char>>::iterator beg=tok.begin(); beg!=tok.end();++beg){
+        std::string field = *beg;
+        //std::cout << field << "\n";
+        strncpy(&headerData[ c*(FIELDSIZE+1)], field.c_str(), FIELDSIZE);
+        c++;
+      }
+      
+
+    }
+    
+
 
     while(infile){
       if (!getline( infile, line )) break;
@@ -319,6 +339,14 @@ int main (int argc, char **argv){
       std::cout << i << " " << &csvData[(FIELDSIZE+1)*i+(FIELDSIZE+1)*(dim[0]-1)*4] << "\n";
     }
   }
+  */
+
+  /*
+  if(rank == 0){
+    for(int i = 0; i < dim[1]; i++){
+      std::cout << i << " " << &headerData[(FIELDSIZE+1)*i] << "\n";
+    }
+  } 
   */
   
 
