@@ -57,20 +57,21 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
 
 	if(rank == 0) std::cout << "Waiting for the others to send me their results..." << std::endl;
 
+/*
   for(int i = 1; i < numRowsToWork; i++){
     std::cout << "I am rank " << rank << " and I have " << &receiveBuffer[(FIELDSIZE+1)*i] << " as " << i << "th element.\n";
   }
- 
+*/
   int currentRowIndex = 0;
   int valueRowIndex = 0;
   int value = strtol(&receiveBuffer[0],NULL,0);
   switch(op){
     case MAX:
-      for(int i = 0; i < 5; i++){
+      for(int i = 0; i < numRowsToWork; i++){
         char stringBuffer[FIELDSIZE+1];
         memcpy(stringBuffer, &receiveBuffer[(FIELDSIZE+1)*i], FIELDSIZE);
         stringBuffer[FIELDSIZE] = '\0';
-        //std::cout << stringBuffer << "\n";
+        std::cout << stringBuffer << "\n";
 
         int valueAtCurrentIndex = 0;//std::stoi(stringBuffer);
 
@@ -84,7 +85,12 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
       break;
     case MIN:
       for(int i = 0; i < numRowsToWork; i++){
-        int valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
+        char stringBuffer[FIELDSIZE+1];
+        memcpy(stringBuffer, &receiveBuffer[(FIELDSIZE+1)*i], FIELDSIZE);
+        stringBuffer[FIELDSIZE] = '\0';
+        std::cout << stringBuffer << "\n";
+
+        int valueAtCurrentIndex = value;
 
         if(valueAtCurrentIndex < value){
           value = valueAtCurrentIndex;
@@ -210,7 +216,6 @@ int* readFile(std::string filename){
   dim[1] = col;
 
   csvData = new char[(dim[0]-1)*dim[1]*(FIELDSIZE+1)];
-  char* readBuffer = new char[(dim[0]-1)*dim[1]*(FIELDSIZE+1)];
 
   int r = 0;
   int c = 0;
@@ -230,8 +235,7 @@ int* readFile(std::string filename){
       for(boost::tokenizer<boost::escaped_list_separator<char>>::iterator beg=tok.begin(); beg!=tok.end();++beg){
         std::string field = *beg;
         //std::cout << field << "\n";
-        strncpy(&csvData[ c*(dim[0]-1)*(FIELDSIZE+1) + (FIELDSIZE+1)*r ], field.c_str(), FIELDSIZE+1);
-        csvData[c*(dim[1]-1)*(FIELDSIZE+1)+(r*FIELDSIZE)+FIELDSIZE] = '\0';
+        strncpy(&csvData[ c*(dim[0]-1)*(FIELDSIZE+1) + (FIELDSIZE+1)*r ], field.c_str(), FIELDSIZE);
         c++;
       }
       
@@ -312,10 +316,11 @@ int main (int argc, char **argv){
   /*
   if(rank == 0){
     for(int i = 0; i < dim[0]-1; i++){
-      std::cout << i << " " << &csvData[(FIELDSIZE+1)*i+(FIELDSIZE+1)*(dim[0]-1)*2] << "\n";
+      std::cout << i << " " << &csvData[(FIELDSIZE+1)*i+(FIELDSIZE+1)*(dim[0]-1)*4] << "\n";
     }
   }
   */
+  
 
 
 	MPI_Finalize();
