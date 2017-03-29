@@ -29,24 +29,25 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
 
   if(rank == 0) std::cout << "Sending data to other processes..." << std::endl;
 
-  if(rank==1){
+  if(rank==1 && TEST){
     std::cout << "I am rank 1 with numRowsToWork=" << numRowsToWork << " and numCols=" << numCols << " and colIndex=" << colIndex << "\n";
   }
 
-  int displs[communicatorSize];
+  int* displs = new int[communicatorSize];
   char* receiveBuffer = new char[(FIELDSIZE+1)*numRowsToWork];
-  int receiveCount = numRowsToWork*(FIELDSIZE+1);
-  int sendCounts[communicatorSize];
+  int receiveCount = (FIELDSIZE+1);
+  int* sendCounts = new int[communicatorSize];
   // Man, it took me a long time to figure out how this actually worked =/
-  for(int i = 0; i < communicatorSize; i++){
-    sendCounts[i] = numRowsToWork*(FIELDSIZE+1);
-    displs[i] = numCols*(FIELDSIZE+1)*numRowsToWork*i;
+  for(int i = 0; i < communicatorSize; ++i){
+    //sendCounts[i] = (FIELDSIZE+1)*numRowsToWork;
+    sendCounts[i] = (FIELDSIZE+1);
+    displs[i] = numCols*i*(FIELDSIZE+1);
   }
 
-  MPI_Iscatterv(
-    &csvData[colIndex*(FIELDSIZE+1)],
-    sendCounts,
-    displs,
+
+  MPI_Iscatter(
+    &csvData[colIndex*((FIELDSIZE+1)*numCols)],
+    (FIELDSIZE+1),
     MPI_CHAR,
     receiveBuffer,
     receiveCount,
@@ -56,6 +57,7 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
     &dataReq);
 
 
+
   MPI_Status dataStatus;
   if(rank!=0) MPI_Waitall(1, &dataReq, &dataStatus);
 
@@ -63,15 +65,24 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
 
 	if(rank == 0) std::cout << "Waiting for the others to send me their results..." << std::endl;
 
-  //std::cout << "I am rank " << rank << " and I have " << &receiveBuffer[0+(FIELDSIZE+1)*1] << " as 1st element.\n";
+  for(int i = 1; i < 2; i++){
+    std::cout << "I am rank " << rank << " and I have " << &receiveBuffer[(FIELDSIZE+1)*i] << " as " << i << "th element.\n";
+  }
  
   int currentRowIndex = 0;
   int valueRowIndex = 0;
   int value = strtol(&receiveBuffer[0],NULL,0);
   switch(op){
     case MAX:
-      for(int i = 0; i < numRowsToWork; i++){
-        int valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
+      for(int i = 0; i < 5; i++){
+        char stringBuffer[FIELDSIZE+1];
+        memcpy(stringBuffer, &receiveBuffer[(FIELDSIZE+1)*i], FIELDSIZE);
+        stringBuffer[FIELDSIZE] = '\0';
+//        std::cout << stringBuffer << "\n";
+
+        int valueAtCurrentIndex = 0;//std::stoi(stringBuffer);
+
+        //std::cout << valueAtCurrentIndex << "\n";
 
         if(valueAtCurrentIndex > value){
           value = valueAtCurrentIndex;
@@ -130,17 +141,31 @@ static void do_rank_0_work_sr(int communicatorSize, int rank, int colIndex, int 
 }
 
 
-static void process(int rank, int communicatorSize, int argc, Mode mode, Operation op, int* dimensions){
+static void process(int rank, int communicatorSize, int argc, char** argv, Mode mode, Operation op, int* dimensions){
+
+
+
   std::string processString = "Executing query as ";
   if(mode == SR){
-    //TODO get this column index dynamically
     int colIndex = 0;
+    if(strlen(argv[3]) == 1){
+      colIndex += (int)argv[3][0] - (int)'A';
+    }
+    else if(strlen(argv[3]) == 2){
+      colIndex += (int)argv[3][0] - (int)'A';
+      colIndex += (int)argv[3][1] - (int)'A';
+    }
+
+
+
+    //TODO get this column index dynamically
     int numRowsToWork = (dimensions[0]-1)/communicatorSize;
     int firstFieldTag = 0;
     int secondFieldTag = 1;
     int valueTag= 2;
-      if(rank == 0) std::cout << processString << "Scatter-Reduce...\n";
-      do_rank_0_work_sr(communicatorSize, rank, colIndex, numRowsToWork, dimensions[1], op, firstFieldTag, secondFieldTag, valueTag);
+    
+    if(rank == 0) std::cout << processString << "Scatter-Reduce...\n";
+    do_rank_0_work_sr(communicatorSize, rank, colIndex, numRowsToWork, dimensions[1], op, firstFieldTag, secondFieldTag, valueTag);
 
   }
   /*
@@ -162,6 +187,8 @@ static void process(int rank, int communicatorSize, int argc, Mode mode, Operati
 // Takes a filename, stores all the data in csvData and returns an int[2] that
 // contains [rows][columns]
 int* readFile(std::string filename){
+
+
 
   int row = 0;
   int col = 0;
@@ -189,19 +216,9 @@ int* readFile(std::string filename){
   // Store dimensions
   dim[0] = row;
   dim[1] = col;
-  if(TEST){
-    std::cout << dim[0] << " " << dim[1] << "\n";
-  }
 
-  // csvData is only holding the 500 rows, not the header
   csvData = new char[(dim[0]-1)*dim[1]*(FIELDSIZE+1)];
-/*  for(int i = 0; i < dim[0]-1; i++){
-    csvData[i] = new char*[dim[1]];
-    for(int j = 0; j < dim[1]; j++){
-      csvData[i][j] = new char[FIELDSIZE+1];
-    }
-  }
-*/
+  char* readBuffer = new char[(dim[0]-1)*dim[1]*(FIELDSIZE+1)];
 
   int r = 0;
   int c = 0;
@@ -221,17 +238,16 @@ int* readFile(std::string filename){
       for(boost::tokenizer<boost::escaped_list_separator<char>>::iterator beg=tok.begin(); beg!=tok.end();++beg){
         std::string field = *beg;
         //std::cout << field << "\n";
-        strncpy(&csvData[ r*dim[1]*(FIELDSIZE+1) + (FIELDSIZE+1)*c ], field.c_str(), FIELDSIZE);
-        csvData[r*dim[1]*(FIELDSIZE+1)+(c*FIELDSIZE)+FIELDSIZE] = '\0';
+        strncpy(&csvData[ c*dim[1]*(FIELDSIZE+1) + (FIELDSIZE+1)*r ], field.c_str(), FIELDSIZE);
+        csvData[c*dim[1]*(FIELDSIZE+1)+(r*FIELDSIZE)+FIELDSIZE] = '\0';
         c++;
       }
       
       r++;
 
     }
-  }
 
- 
+  }
 
   return dim;
 }
@@ -253,6 +269,7 @@ int main (int argc, char **argv){
 
   int* dimensions = readFile(inputFile);
 
+
   if (argc < 4){
 		if (rank == 0){
 			std::cout << "At least 3 arguments will be required.\n";
@@ -261,8 +278,10 @@ int main (int argc, char **argv){
     }
 	}
 
+  
   Mode mode;
   Operation op;
+  
   if(std::string(argv[1]) == "sr"){
     mode = SR;
   }
@@ -296,15 +315,7 @@ int main (int argc, char **argv){
 
 
 
-  process(rank, communicatorSize, argc, mode, op, dimensions);
-
-
-
-  if(TEST && rank == 0){
-    std::cout << "A value " << &csvData[dim[1]*2*(FIELDSIZE+1) + (FIELDSIZE+1)*2] << "\n";
-  }
-
-  
+  process(rank, communicatorSize, argc, argv, mode, op, dimensions);
 
 
 
