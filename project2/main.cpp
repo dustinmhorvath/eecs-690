@@ -248,13 +248,10 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
 	if(rank == 0) std::cout << "Doing rank0 work..." << std::endl;
 
 	if(rank == 0) std::cout << "Waiting for the others to send me their results..." << std::endl;
-
-  
   
   int currentRowIndex = 0;
   int valueRowIndex = 0;
-  //TODO change 0 address to start of row
-  double value = strtol(&csvData[0],NULL,0);
+  double value = strtol(&csvData[cols[rank]*(FIELDSIZE+1)*numRows],NULL,0);
   double sum = 0;
   switch(op){
     case MAX:
@@ -266,10 +263,6 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
           valueRowIndex = i;
         }
       }
-      std::cout << std::fixed;
-      std::cout << std::setprecision(2);
-      //std::cout << value << "\n";
-
     break;
 
     case MIN:
@@ -281,10 +274,6 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
           valueRowIndex = i;
         }
       }
-      std::cout << std::fixed;
-      std::cout << std::setprecision(2);
-      //std::cout << value << "\n";
-
     break;      
     
     case AVG:
@@ -293,25 +282,22 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
         sum += valueAtCurrentIndex;
       }
       value = sum/numRows;
+      valueRowIndex = 0;
     break;
-
-
-
-    
-    
   }
 
-  double* sendBuffer = new double[1];
-  double* receiveBuffer = new double[communicatorSize];
+  double* sendBuffer = new double[2];
+  double* receiveBuffer = new double[communicatorSize*2];
 
   // Contains value that will be sent back to rank 0
   sendBuffer[0] = value;
+  sendBuffer[1] = valueRowIndex;
   MPI_Gather(
     sendBuffer,
-    1,
+    2,
     MPI_DOUBLE,
     receiveBuffer,
-    1,
+    2,
     MPI_DOUBLE,
     0,
     MPI_COMM_WORLD);
@@ -321,17 +307,29 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
   if(rank==0) {
     switch(op){
       char stringBuffer[FIELDSIZE+1];
+      char stateBuffer[FIELDSIZE+1];
+      char cityBuffer[FIELDSIZE+1];
 
       case MAX:
-      case MIN:
+        for(int i = 0; i < communicatorSize; i++){
         std::cout << std::fixed;
         std::cout << std::setprecision(2);
-        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*cols[rank]], FIELDSIZE);
+        memcpy(stringBuffer, &headerData[cols[i]*(FIELDSIZE+1)], FIELDSIZE);
         stringBuffer[FIELDSIZE] = '\0';
-        for(int i = 0; i < communicatorSize; i++){
-                  std::cout <<  std::string(stringBuffer) << 
+        memcpy(stateBuffer, &csvData[ (int)receiveBuffer[2*i+1] * (FIELDSIZE+1)], FIELDSIZE);
+        stateBuffer[FIELDSIZE] = '\0';
+        memcpy(cityBuffer, &csvData[ (int)receiveBuffer[2*i+1] * (FIELDSIZE+1) + numRows*(FIELDSIZE+1)], FIELDSIZE);
+        cityBuffer[FIELDSIZE] = '\0';
+
+
+          std::cout <<  "max " <<
+                        std::string(stringBuffer) << 
                         " = " <<
-                        receiveBuffer[i] <<
+                        receiveBuffer[2*i] <<
+                        "; " <<
+                        std::string(cityBuffer) <<
+                        ", " <<
+                        std::string(stateBuffer) <<
                         "\n";
         }
       break;/*
