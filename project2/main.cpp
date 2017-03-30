@@ -216,7 +216,6 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
   if(rank == 0) std::cout << "Sending data to other processes..." << std::endl;
 
 
-  char* receiveBuffer = new char[(FIELDSIZE+1)*numRows*numCols];
   int sendCount = (FIELDSIZE+1)*numRows*numCols;
 
   // rank 0 *already* has csvData(global), but it's not defined for the other
@@ -269,7 +268,7 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
       }
       std::cout << std::fixed;
       std::cout << std::setprecision(2);
-      std::cout << value << "\n";
+      //std::cout << value << "\n";
 
     break;
     /*
@@ -298,14 +297,25 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
     
   }
 
-
   double* sendBuffer = new double[1];
-  double* receiveDoubleBuffer = new double[1];
+  double* receiveBuffer = new double[communicatorSize];
 
   // Contains value that will be sent back to rank 0
   sendBuffer[0] = value;
+  MPI_Gather(
+    sendBuffer,
+    1,
+    MPI_DOUBLE,
+    receiveBuffer,
+    1,
+    MPI_DOUBLE,
+    0,
+    MPI_COMM_WORLD);
+    //&dataReq);
 
- /* 
+
+
+  
   if(rank==0) {
     switch(op){
       char stringBuffer[FIELDSIZE+1];
@@ -314,13 +324,15 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
       case MIN:
         std::cout << std::fixed;
         std::cout << std::setprecision(2);
-        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
+        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*cols[rank]], FIELDSIZE);
         stringBuffer[FIELDSIZE] = '\0';
-                std::cout <<  std::string(stringBuffer) << 
-                      " = " <<
-                      receiveDoubleBuffer[0] <<
-                      "\n";
-      break;
+        for(int i = 0; i < communicatorSize; i++){
+                  std::cout <<  std::string(stringBuffer) << 
+                        " = " <<
+                        receiveBuffer[i] <<
+                        "\n";
+        }
+      break;/*
       case AVG:
         std::cout << std::fixed;
         std::cout << std::setprecision(2);
@@ -333,37 +345,12 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
                       receiveDoubleBuffer[0]/communicatorSize <<
                       "\n";
       break;
-
-      case NUMGT:
-        std::cout << std::fixed;
-        std::cout << std::setprecision(2);
-        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
-        stringBuffer[FIELDSIZE] = '\0';
-        std::cout <<  "Number cities with " <<
-                      std::string(stringBuffer) << 
-                      " gt " <<
-                      bound << 
-                      " = " <<
-                      receiveDoubleBuffer[0] <<
-                      "\n";
-      break;
-      case NUMLT: 
-        std::cout << std::fixed;
-        std::cout << std::setprecision(2);
-        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
-        stringBuffer[FIELDSIZE] = '\0';
-        std::cout <<  "Number cities with " <<
-                      std::string(stringBuffer) << 
-                      " lt " <<
-                      bound << 
-                      " = " <<
-                      receiveDoubleBuffer[0] <<
-                      "\n";
-      break;
+    
+    
+    */
     }
-
   }
-  */
+  
 
 
 
