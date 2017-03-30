@@ -25,7 +25,7 @@ enum Operation { MIN, MAX, AVG, NUMGT, NUMLT };
 
 
 
-static void do_sr_work(int communicatorSize, int rank, int colIndex, int numRowsToWork, int numCols, Operation op, int bound, int firstFieldTag, int secondFieldTag, int valueTag){
+static void do_sr_work(int communicatorSize, int rank, int colIndex, int numRowsToWork, int numCols, Operation op, int bound){
 
 	MPI_Request dataReq;
 
@@ -209,6 +209,167 @@ static void do_sr_work(int communicatorSize, int rank, int colIndex, int numRows
 }
 
 
+static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int numRows, int numCols, Operation op, int bound){
+
+	MPI_Request dataReq;
+
+  if(rank == 0) std::cout << "Sending data to other processes..." << std::endl;
+
+
+  char* receiveBuffer = new char[(FIELDSIZE+1)*numRows*numCols];
+  int sendCount = (FIELDSIZE+1)*numRows*numCols;
+
+  // rank 0 *already* has csvData(global), but it's not defined for the other
+  // ranks.
+  if(rank!=0){
+    csvData = new char[numRows*numCols*(FIELDSIZE+1)];
+  }
+
+  {
+    MPI_Ibcast(
+      &csvData[0],
+      sendCount,
+      MPI_CHAR,
+      0,
+      MPI_COMM_WORLD,
+      &dataReq);
+  }
+
+  MPI_Status dataStatus;
+  if(rank!=0) MPI_Waitall(1, &dataReq, &dataStatus);
+
+/*
+  for(int i = 0; i < 10; i++){
+    std::cout << "I am rank " << rank << " and I have " << &csvData[(FIELDSIZE+1)*i*numRows] << " as " << i << "th element.\n";
+  }
+*/
+
+
+
+	if(rank == 0) std::cout << "Doing rank0 work..." << std::endl;
+
+	if(rank == 0) std::cout << "Waiting for the others to send me their results..." << std::endl;
+
+  
+  
+  int currentRowIndex = 0;
+  int valueRowIndex = 0;
+  //TODO change 0 address to start of row
+  double value = strtol(&csvData[0],NULL,0);
+  double sum = 0;
+  switch(op){
+    case MAX:
+      for(int i = 0; i < numRows; i++){
+        double valueAtCurrentIndex = strtol(&csvData[cols[rank]*(FIELDSIZE+1)*numRows],NULL,0);
+      
+        if(valueAtCurrentIndex > value){
+          value = valueAtCurrentIndex;
+          valueRowIndex = i;
+        }
+      }
+      std::cout << std::fixed;
+      std::cout << std::setprecision(2);
+      std::cout << value << "\n";
+
+    break;
+    /*
+    case MIN:
+      for(int i = 0; i < numRows; i++){
+        double valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
+
+        if(valueAtCurrentIndex < value){
+          value = valueAtCurrentIndex;
+          valueRowIndex = i;
+        }
+      }
+    break;
+    
+    case AVG:
+      for(int i = 0; i < numRows; i++){
+        double valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
+        sum += valueAtCurrentIndex;
+      }
+      value = sum/numRows;
+    break;
+*/
+
+
+    
+    
+  }
+
+
+  double* sendBuffer = new double[1];
+  double* receiveDoubleBuffer = new double[1];
+
+  // Contains value that will be sent back to rank 0
+  sendBuffer[0] = value;
+
+ /* 
+  if(rank==0) {
+    switch(op){
+      char stringBuffer[FIELDSIZE+1];
+
+      case MAX:
+      case MIN:
+        std::cout << std::fixed;
+        std::cout << std::setprecision(2);
+        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
+        stringBuffer[FIELDSIZE] = '\0';
+                std::cout <<  std::string(stringBuffer) << 
+                      " = " <<
+                      receiveDoubleBuffer[0] <<
+                      "\n";
+      break;
+      case AVG:
+        std::cout << std::fixed;
+        std::cout << std::setprecision(2);
+        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
+        stringBuffer[FIELDSIZE] = '\0';
+
+        std::cout <<  "Average " << 
+                      std::string(stringBuffer) << 
+                      " = " <<
+                      receiveDoubleBuffer[0]/communicatorSize <<
+                      "\n";
+      break;
+
+      case NUMGT:
+        std::cout << std::fixed;
+        std::cout << std::setprecision(2);
+        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
+        stringBuffer[FIELDSIZE] = '\0';
+        std::cout <<  "Number cities with " <<
+                      std::string(stringBuffer) << 
+                      " gt " <<
+                      bound << 
+                      " = " <<
+                      receiveDoubleBuffer[0] <<
+                      "\n";
+      break;
+      case NUMLT: 
+        std::cout << std::fixed;
+        std::cout << std::setprecision(2);
+        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
+        stringBuffer[FIELDSIZE] = '\0';
+        std::cout <<  "Number cities with " <<
+                      std::string(stringBuffer) << 
+                      " lt " <<
+                      bound << 
+                      " = " <<
+                      receiveDoubleBuffer[0] <<
+                      "\n";
+      break;
+    }
+
+  }
+  */
+
+
+
+}
+
+
 static void process(int rank, int communicatorSize, int argc, char** argv, Mode mode, Operation op, int bound, int* dimensions){
 
 
@@ -226,29 +387,46 @@ static void process(int rank, int communicatorSize, int argc, char** argv, Mode 
 
     
 
-
+    int numRowsToWork = (dimensions[0]-1)/communicatorSize;
 
     //TODO get this column index dynamically
-    int numRowsToWork = (dimensions[0]-1)/communicatorSize;
-    int firstFieldTag = 0;
-    int secondFieldTag = 1;
-    int valueTag= 2;
     
     if(rank == 0) std::cout << processString << "Scatter-Reduce...\n";
-    do_sr_work(communicatorSize, rank, colIndex, numRowsToWork, dimensions[1], op, bound, firstFieldTag, secondFieldTag, valueTag);
+    do_sr_work(communicatorSize, rank, colIndex, numRowsToWork, dimensions[1], op, bound);
 
   }
-  /*
-  else if(arguments[1] == std::string("bg")){
-    if(rank == 0){
-      std::cout << processString << "Broadcast-Gather...\n";
-      do_rank_0_work_bg(communicatorSize, argc, arguments, dimensions);
-    }
-    else{
-      do_rank_n_work_bg(communicatorSize, argc, arguments);
+ 
+  
+  else if(mode = BG){
+
+    // Index all of the column names
+    int numCols = argc-3;
+    // Catch incorrect number of ranks
+    if(numCols != communicatorSize){
+      if(rank==0) std::cout << "Number of processes (" << communicatorSize << ") != number of columns (" << numCols << "). Exiting...\n";
+      return;
     }
 
-  }*/
+    int* cols = new int[numCols];
+    for(int i = 0; i < argc-3; i++){
+      cols[i] = 0;
+      if(strlen(argv[3+i]) == 1){
+        cols[i] += (int)argv[3+i][0] - (int)'A';
+      }
+      else if(strlen(argv[3+i]) == 2){
+        cols[i] += (int)argv[3+i][0] - (int)'A';
+        cols[i] += (int)argv[3+i][1] - (int)'A';
+      }
+    }
+
+
+    int numRows = dimensions[0]-1;
+
+    if(rank==0) std::cout << processString << "Broadcast-Gather...\n";
+
+    do_rank_0_work_bg(communicatorSize, rank, cols, numRows, dimensions[1], op, bound);
+
+  }
 
 
 }
