@@ -13,27 +13,32 @@
 
 #define TEST true
 
+/*
+ * Dustin Horvath
+ * 3/29/17
+ * openmpi project: reads a CSV file and allows querying via multiple mpi processes.
+ * to use:
+ * `make && mpirun -np 20 proj2 sr max/min/avg D`
+ * `make && mpirun -np  5 proj2 sr number AS gt/lt 55`
+ * "                  " 4 proj2 bg max/min D E I M`
+ *
+ */
+
+
 // This array is only valid for rank 0. Don't expect rank1+ to have access.
 int* dim = new int[2];
 char* csvData;
 char* headerData;
 
+// These make switch statements a bit tidier
 enum Mode { SR , BG };
 enum Operation { MIN, MAX, AVG, NUMGT, NUMLT };
-
-//static void performOperation(Mode mode, Operation op, receiveBuffer, int numRowsToWork);
-
-
 
 static void do_sr_work(int communicatorSize, int rank, int colIndex, int numRowsToWork, int numCols, Operation op, int bound){
 
 	MPI_Request dataReq;
 
   if(rank == 0) std::cout << "Sending data to other processes..." << std::endl;
-
-  if(rank==1 && TEST){
-    std::cout << "I am rank 1 with numRowsToWork=" << numRowsToWork << " and numCols=" << numCols << " and colIndex=" << colIndex << "\n";
-  }
 
   char* receiveBuffer = new char[(FIELDSIZE+1)*numRowsToWork];
   int sendCount = (FIELDSIZE+1)*numRowsToWork;
@@ -50,20 +55,12 @@ static void do_sr_work(int communicatorSize, int rank, int colIndex, int numRows
     MPI_COMM_WORLD,
     &dataReq);
 
-
-
   MPI_Status dataStatus;
   if(rank!=0) MPI_Waitall(1, &dataReq, &dataStatus);
 
 	if(rank == 0) std::cout << "Doing rank0 work..." << std::endl;
 
-	if(rank == 0) std::cout << "Waiting for the others to send me their results..." << std::endl;
-
-/*
-  for(int i = 1; i < numRowsToWork; i++){
-    std::cout << "I am rank " << rank << " and I have " << &receiveBuffer[(FIELDSIZE+1)*i] << " as " << i << "th element.\n";
-  }
-*/
+	if(rank == 0) std::cout << "Waiting for the others to send me their results...\n" << std::endl;
   
   MPI_Op reduceOperation;
   int currentRowIndex = 0;
@@ -126,9 +123,7 @@ static void do_sr_work(int communicatorSize, int rank, int colIndex, int numRows
       reduceOperation = MPI_SUM;
       value = sum;
     break;
-
   }
-
 
   double* sendBuffer = new double[1];
   double* receiveDoubleBuffer = new double[1];
@@ -201,15 +196,11 @@ static void do_sr_work(int communicatorSize, int rank, int colIndex, int numRows
                       "\n";
       break;
     }
-
   }
-
-
-
 }
 
 
-static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int numRows, int numCols, Operation op, int bound){
+static void do_bg_work(int communicatorSize, int rank, int* cols, int numRows, int numCols, Operation op, int bound){
 
 	MPI_Request dataReq;
 
@@ -237,17 +228,8 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
   MPI_Status dataStatus;
   if(rank!=0) MPI_Waitall(1, &dataReq, &dataStatus);
 
-/*
-  for(int i = 0; i < 10; i++){
-    std::cout << "I am rank " << rank << " and I have " << &csvData[(FIELDSIZE+1)*i*numRows] << " as " << i << "th element.\n";
-  }
-*/
 
-
-
-	if(rank == 0) std::cout << "Doing rank0 work..." << std::endl;
-
-	if(rank == 0) std::cout << "Waiting for the others to send me their results..." << std::endl;
+	if(rank == 0) std::cout << "Waiting for the others to send me their results...\n" << std::endl;
   
   int currentRowIndex = 0;
   int valueRowIndex = 0;
@@ -292,6 +274,7 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
   // Contains value that will be sent back to rank 0
   sendBuffer[0] = value;
   sendBuffer[1] = valueRowIndex;
+
   MPI_Gather(
     sendBuffer,
     2,
@@ -302,8 +285,6 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
     0,
     MPI_COMM_WORLD);
 
-
-  
   if(rank==0) {
     char stringBuffer[FIELDSIZE+1];
     char stateBuffer[FIELDSIZE+1];
@@ -321,13 +302,13 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
       case AVG:
         if(op == AVG) operation = "avg ";
         for(int i = 0; i < communicatorSize; i++){
+          // Messy, but w/e. My string handling in C isn't awesome
           memcpy(stringBuffer, &headerData[cols[i]*(FIELDSIZE+1)], FIELDSIZE);
           stringBuffer[FIELDSIZE] = '\0';
           memcpy(stateBuffer, &csvData[ (int)receiveBuffer[2*i+1] * (FIELDSIZE+1)], FIELDSIZE);
           stateBuffer[FIELDSIZE] = '\0';
           memcpy(cityBuffer, &csvData[ (int)receiveBuffer[2*i+1] * (FIELDSIZE+1) + numRows*(FIELDSIZE+1)], FIELDSIZE);
           cityBuffer[FIELDSIZE] = '\0';
-
 
           std::cout <<  operation <<
                         std::string(stringBuffer) << 
@@ -340,24 +321,16 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
                         "\n";
         }
       break;
-
-          
-    
     }
   }
-  
-
-
-
 }
 
-
+// Looks at parameters and processes the call either as SR or BG
 static void process(int rank, int communicatorSize, int argc, char** argv, Mode mode, Operation op, int bound, int* dimensions){
-
-
 
   std::string processString = "Executing query as ";
   if(mode == SR){
+    // Compute column index
     int colIndex = 0;
     if(strlen(argv[3]) == 1){
       colIndex += (int)argv[3][0] - (int)'A';
@@ -367,8 +340,7 @@ static void process(int rank, int communicatorSize, int argc, char** argv, Mode 
       colIndex += (int)argv[3][1] - (int)'A';
     }
 
-    
-
+    // This value is the number of rows each process will be responsible for
     int numRowsToWork = (dimensions[0]-1)/communicatorSize;
 
     //TODO get this column index dynamically
@@ -389,6 +361,7 @@ static void process(int rank, int communicatorSize, int argc, char** argv, Mode 
       return;
     }
 
+    // Compute column indices
     int* cols = new int[numCols];
     for(int i = 0; i < argc-3; i++){
       cols[i] = 0;
@@ -406,11 +379,9 @@ static void process(int rank, int communicatorSize, int argc, char** argv, Mode 
 
     if(rank==0) std::cout << processString << "Broadcast-Gather...\n";
 
-    do_rank_0_work_bg(communicatorSize, rank, cols, numRows, dimensions[1], op, bound);
+    do_bg_work(communicatorSize, rank, cols, numRows, dimensions[1], op, bound);
 
   }
-
-
 }
 
 
@@ -423,6 +394,9 @@ int* readFile(std::string filename){
   int row = 0;
   int col = 0;
   int count = 0;
+  // Wrapping this so that my file streams close as soon as they're not needed
+  //
+  // This block is only here to count the rows and columns
   {
     std::ifstream infile( filename );
     std::string line;
@@ -442,11 +416,12 @@ int* readFile(std::string filename){
   
   }
 
-
   // Store dimensions
   dim[0] = row;
   dim[1] = col;
 
+  // csvData holds all of the csv file minus the header. It's the size of all
+  // the fields in the file X the "fieldsize", chosen somewhat arbitrarily
   csvData = new char[(dim[0]-1)*dim[1]*(FIELDSIZE+1)];
   headerData = new char[(dim[0]-1)*(FIELDSIZE+1)];
 
@@ -467,15 +442,10 @@ int* readFile(std::string filename){
       
       for(boost::tokenizer<boost::escaped_list_separator<char>>::iterator beg=tok.begin(); beg!=tok.end();++beg){
         std::string field = *beg;
-        //std::cout << field << "\n";
         strncpy(&headerData[ c*(FIELDSIZE+1)], field.c_str(), FIELDSIZE);
         c++;
       }
-      
-
     }
-    
-
 
     while(infile){
       if (!getline( infile, line )) break;
@@ -485,7 +455,9 @@ int* readFile(std::string filename){
       c=0;
       for(boost::tokenizer<boost::escaped_list_separator<char>>::iterator beg=tok.begin(); beg!=tok.end();++beg){
         std::string field = *beg;
-        //std::cout << field << "\n";
+        // While the file is read one row at a time, I'm writing it here
+        // column-wise. This will later allow mpi_scatter to traverse the
+        // contiguous chars much more easily.
         strncpy(&csvData[ c*(dim[0]-1)*(FIELDSIZE+1) + (FIELDSIZE+1)*r ], field.c_str(), FIELDSIZE);
         c++;
       }
@@ -496,6 +468,7 @@ int* readFile(std::string filename){
 
   }
 
+  // Return the file dimensions to the caller
   return dim;
 }
 
