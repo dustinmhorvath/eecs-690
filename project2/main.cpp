@@ -305,24 +305,31 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
 
   
   if(rank==0) {
+    char stringBuffer[FIELDSIZE+1];
+    char stateBuffer[FIELDSIZE+1];
+    char cityBuffer[FIELDSIZE+1];
+    std::cout << std::fixed;
+    std::cout << std::setprecision(2);
+    std::string operation;
+
     switch(op){
-      char stringBuffer[FIELDSIZE+1];
-      char stateBuffer[FIELDSIZE+1];
-      char cityBuffer[FIELDSIZE+1];
-
+      
       case MAX:
+        operation = "max ";
+      case MIN:
+        if(op == MIN) operation = "min ";
+      case AVG:
+        if(op == AVG) operation = "avg ";
         for(int i = 0; i < communicatorSize; i++){
-        std::cout << std::fixed;
-        std::cout << std::setprecision(2);
-        memcpy(stringBuffer, &headerData[cols[i]*(FIELDSIZE+1)], FIELDSIZE);
-        stringBuffer[FIELDSIZE] = '\0';
-        memcpy(stateBuffer, &csvData[ (int)receiveBuffer[2*i+1] * (FIELDSIZE+1)], FIELDSIZE);
-        stateBuffer[FIELDSIZE] = '\0';
-        memcpy(cityBuffer, &csvData[ (int)receiveBuffer[2*i+1] * (FIELDSIZE+1) + numRows*(FIELDSIZE+1)], FIELDSIZE);
-        cityBuffer[FIELDSIZE] = '\0';
+          memcpy(stringBuffer, &headerData[cols[i]*(FIELDSIZE+1)], FIELDSIZE);
+          stringBuffer[FIELDSIZE] = '\0';
+          memcpy(stateBuffer, &csvData[ (int)receiveBuffer[2*i+1] * (FIELDSIZE+1)], FIELDSIZE);
+          stateBuffer[FIELDSIZE] = '\0';
+          memcpy(cityBuffer, &csvData[ (int)receiveBuffer[2*i+1] * (FIELDSIZE+1) + numRows*(FIELDSIZE+1)], FIELDSIZE);
+          cityBuffer[FIELDSIZE] = '\0';
 
 
-          std::cout <<  "max " <<
+          std::cout <<  operation <<
                         std::string(stringBuffer) << 
                         " = " <<
                         receiveBuffer[2*i] <<
@@ -332,22 +339,10 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
                         std::string(stateBuffer) <<
                         "\n";
         }
-      break;/*
-      case AVG:
-        std::cout << std::fixed;
-        std::cout << std::setprecision(2);
-        memcpy(stringBuffer, &headerData[(FIELDSIZE+1)*colIndex], FIELDSIZE);
-        stringBuffer[FIELDSIZE] = '\0';
-
-        std::cout <<  "Average " << 
-                      std::string(stringBuffer) << 
-                      " = " <<
-                      receiveDoubleBuffer[0]/communicatorSize <<
-                      "\n";
       break;
+
+          
     
-    
-    */
     }
   }
   
