@@ -259,7 +259,7 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
   switch(op){
     case MAX:
       for(int i = 0; i < numRows; i++){
-        double valueAtCurrentIndex = strtol(&csvData[cols[rank]*(FIELDSIZE+1)*numRows],NULL,0);
+        double valueAtCurrentIndex = strtol(&csvData[cols[rank]*(FIELDSIZE+1)*numRows+(FIELDSIZE+1)*i],NULL,0);
       
         if(valueAtCurrentIndex > value){
           value = valueAtCurrentIndex;
@@ -271,26 +271,30 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
       //std::cout << value << "\n";
 
     break;
-    /*
+
     case MIN:
       for(int i = 0; i < numRows; i++){
-        double valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
-
+        double valueAtCurrentIndex = strtol(&csvData[cols[rank]*(FIELDSIZE+1)*numRows+(FIELDSIZE+1)*i],NULL,0);
+      
         if(valueAtCurrentIndex < value){
           value = valueAtCurrentIndex;
           valueRowIndex = i;
         }
       }
-    break;
+      std::cout << std::fixed;
+      std::cout << std::setprecision(2);
+      //std::cout << value << "\n";
+
+    break;      
     
     case AVG:
       for(int i = 0; i < numRows; i++){
-        double valueAtCurrentIndex = strtol(&receiveBuffer[(FIELDSIZE+1)*i],NULL,0);
+        double valueAtCurrentIndex = strtol(&csvData[cols[rank]*(FIELDSIZE+1)*numRows+(FIELDSIZE+1)*i],NULL,0);
         sum += valueAtCurrentIndex;
       }
       value = sum/numRows;
     break;
-*/
+
 
 
     
@@ -311,8 +315,6 @@ static void do_rank_0_work_bg(int communicatorSize, int rank, int* cols, int num
     MPI_DOUBLE,
     0,
     MPI_COMM_WORLD);
-    //&dataReq);
-
 
 
   
