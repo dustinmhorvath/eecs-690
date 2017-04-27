@@ -188,6 +188,7 @@ int ContourGenerator::computeContourEdgesFor(float level, vec2*& lines)
 	// Create device buffers associated with the context
 	//----------------------------------------------------------
   int numElements = nRowsOfVertices * nColsOfVertices;
+	int numEdges = 0;
 
 	size_t datasize = numElements*sizeof(vertexValues[0]);
 	std::cout << "DATASIZE = " << datasize << "\n";
@@ -196,13 +197,20 @@ int ContourGenerator::computeContourEdgesFor(float level, vec2*& lines)
 		context, CL_MEM_READ_ONLY, datasize, nullptr, &status);
 	checkStatus("clCreateBuffer-A", status, true);
 
-	cl_mem d_returnValue = clCreateBuffer( // Output array on the device
-		context, CL_MEM_WRITE_ONLY, sizeof(int), nullptr, &status);
+  cl_mem d_returnValue = clCreateBuffer( // Output array on the device
+    context, CL_MEM_WRITE_ONLY, sizeof(int), nullptr, &status);
+  checkStatus("clCreateBuffer-B", status, true);
 
   status = clEnqueueWriteBuffer(cmdQueue, 
 		d_vertexBuffer, CL_FALSE, 0, datasize,                         
 		vertexValues, 0, nullptr, nullptr);
 	checkStatus("clEnqueueWriteBuffer-A", status, true);
+
+  status = clEnqueueWriteBuffer(cmdQueue, 
+		d_returnValue, CL_FALSE, 0, sizeof(int),
+		&numEdges, 0, nullptr, nullptr);
+	checkStatus("clEnqueueWriteBuffer-B", status, true);
+
 
 	//-----------------------------------------------------
 	// Create, compile, and link the program
@@ -260,8 +268,9 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 	// Configure the work-item structure
 	//----------------------------------------------------- 
 
-	size_t globalWorkSize[] = { 64, 32, 32 };    
-	size_t localWorkSize[] = { 8, 8, 4 };    
+  // TODO: too many kernels for smaller maps and not enough for big
+	size_t localWorkSize[] = { 16, 16 };    
+	size_t globalWorkSize[] = { 256 * 256 };
 	if (numDimsToUse == 1)
 		localWorkSize[0] = 32;
 	else if (numDimsToUse == 2)
@@ -278,11 +287,10 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 		0, nullptr, nullptr); // event information, if needed
 	checkStatus("clEnqueueNDRangeKernel", status, true);
 
-  //-----------------------------------------------------
+	//-----------------------------------------------------
 	// Read the output buffer back to the host
 	//----------------------------------------------------- 
 
-	int numEdges = 0;
 	clEnqueueReadBuffer(cmdQueue, 
 		d_returnValue, CL_TRUE, 0, sizeof(int), 
 		&numEdges, 0, nullptr, nullptr);
@@ -291,7 +299,25 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 
 	clFinish(cmdQueue);
 
+	//-----------------------------------------------------
+	// Release OpenCL resources
+	//----------------------------------------------------- 
+
   std::cout << "NUMEDGES = " << numEdges << "\n";
+
+	// Free OpenCL resources
+	clReleaseKernel(kernel);
+	clReleaseProgram(program);
+	clReleaseCommandQueue(cmdQueue);
+	clReleaseContext(context);
+  clReleaseMemObject(d_vertexBuffer);
+  clReleaseMemObject(d_returnValue);
+
+	// Free host resources
+	delete [] platforms;
+	delete [] devices;
+
+
 
 
 
