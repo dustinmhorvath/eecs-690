@@ -54,12 +54,13 @@ void computeEdges( __global float* d_vertexBuffer,
       x2 = (1-f2)*myCol + f2*(myCol + 1);
       y2 = (1-f2)*myRow + f2*(myRow + 1);
 
-      atomic_inc(d_numEdges);
       int k = atomic_add(&loc, 4);
       lineBuffer[k] = x1;
       lineBuffer[k+1] = y1;
       lineBuffer[k+2] = x2;
       lineBuffer[k+3] = y2;
+
+      atomic_inc(d_numEdges);
     }
     
 

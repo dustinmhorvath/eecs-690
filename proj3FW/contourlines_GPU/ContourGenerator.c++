@@ -216,9 +216,9 @@ int ContourGenerator::computeContourEdgesFor(float level, vec2*& lines)
 	// Create, compile, and link the program
 	//----------------------------------------------------- 
 
-	const char* programSource[] = { readSource("CountEdges.cl") };
+	const char* firstProgramSource[] = { readSource("CountEdges.cl") };
 	cl_program program = clCreateProgramWithSource(context, 
-		1, programSource, nullptr, &status);
+		1, firstProgramSource, nullptr, &status);
 	checkStatus("clCreateProgramWithSource", status, true);
 
 	status = clBuildProgram(program, numDevices, devices, 
@@ -306,35 +306,177 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
   std::cout << "NUMEDGES = " << numEdges << "\n";
 
 	// Free OpenCL resources
+  // Here, we're only dropping the things relevant to the counting kernel
 	clReleaseKernel(kernel);
 	clReleaseProgram(program);
-	clReleaseCommandQueue(cmdQueue);
-	clReleaseContext(context);
-  clReleaseMemObject(d_vertexBuffer);
+  //I think we can reuse this vertex buffer.
+  //clReleaseMemObject(d_vertexBuffer);
   clReleaseMemObject(d_returnValue);
 
-	// Free host resources
-	delete [] platforms;
-	delete [] devices;
+  //////////////////////////////////////////////////////////////////////////
+  //------------------ END COUNTING KERNEL -------------------------------//
+  //////////////////////////////////////////////////////////////////////////
 
-
-
-
-
-
-
-	// Fire a kernel to determine expected number of edges at the given "level'
-	int numExpectedEdges = 2;
+  // Fire a kernel to determine expected number of edges at the given "level'
+	int numExpectedEdges = numEdges;
 
 	// Create space for the line end points on the device
 	int numExpectedPoints = 2 * numExpectedEdges; // each edge is: (x,y), (x,y)
 
-	// Fire a kernel to compute the edge end points (determimes "numActualEdges")
-	int numActualEdges = 2;
-	int numActualPoints = 2 * numActualEdges; // each edge is: (x,y), (x,y)
 
+  //////////////////////////////////////////////////////////////////////////
+  //------------------ START COMPUTE KERNEL ------------------------------//
+  //////////////////////////////////////////////////////////////////////////
+  
+  //----------------------------------------------------------
+	// Create device buffers associated with the context
+	//----------------------------------------------------------
+  
+  int expectedNumCoordValues = numExpectedPoints * 2;
+  
+  // Fire a kernel to compute the edge end points (determimes "numActualEdges")
+	int numActualEdges = 0;
+
+
+	size_t lineBufferSize = expectedNumCoordValues*sizeof(float);
+  int computeKernelEdgeCount = 0;
+
+  cl_mem d_lineBuffer = clCreateBuffer( // Output array on the device
+    context, CL_MEM_WRITE_ONLY, lineBufferSize, nullptr, &status);
+  checkStatus("clCreateBuffer-A", status, true);
+
+  cl_mem d_computeKernelEdgeCount = clCreateBuffer( // Output array on the device
+    context, CL_MEM_WRITE_ONLY, sizeof(int), nullptr, &status);
+  checkStatus("clCreateBuffer-B", status, true);
+
+
+  status = clEnqueueWriteBuffer(cmdQueue, 
+		d_computeKernelEdgeCount, CL_FALSE, 0, sizeof(int),
+		&numActualEdges, 0, nullptr, nullptr);
+	checkStatus("clEnqueueWriteBuffer-B", status, true);
+
+
+	//-----------------------------------------------------
+	// Create, compile, and link the program
+	//----------------------------------------------------- 
+
+  const char* secondProgramSource[] = { readSource("ComputeEdges.cl") };
+	program = clCreateProgramWithSource(context, 
+		1, secondProgramSource, nullptr, &status);
+	checkStatus("clCreateProgramWithSource", status, true);
+
+	status = clBuildProgram(program, numDevices, devices, 
+		nullptr, nullptr, nullptr);
+	checkStatus("clBuildProgram", status, false);
+
+  if (status == CL_BUILD_PROGRAM_FAILURE) {
+    // Determine the size of the log
+    size_t log_size;
+    clGetProgramBuildInfo(program, devices[0], CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+
+    // Allocate memory for the log
+    char *log = (char *) malloc(log_size);
+
+    // Get the log
+    clGetProgramBuildInfo(program, devices[0], CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+
+    // Print the log
+    printf("%s\n", log);
+    exit;
+  }
+
+	//-----------------------------------------------------------
+	// Create a kernel from one of the __kernel functions
+	//         in the source that was built.
+	//-----------------------------------------------------------
+
+	kernel = clCreateKernel(program, "computeEdges", &status);
+
+	//-----------------------------------------------------
+	// Set the kernel arguments
+	//----------------------------------------------------- 
+
+  int loc = 0;
+
+	status = clSetKernelArg(kernel, 0, sizeof(cl_mem), &d_vertexBuffer);
+	checkStatus("clSetKernelArg-A", status, true);
+	status = clSetKernelArg(kernel, 1, sizeof(cl_mem), &d_lineBuffer);
+	checkStatus("clSetKernelArg-B", status, true);
+  status = clSetKernelArg(kernel, 2, sizeof(int), &computeKernelEdgeCount);
+	checkStatus("clSetKernelArg-C", status, true);
+  status = clSetKernelArg(kernel, 3, sizeof(int), &loc);
+	checkStatus("clSetKernelArg-D", status, true);
+	status = clSetKernelArg(kernel, 4, sizeof(int), &nRowsOfVertices);
+	checkStatus("clSetKernelArg-E", status, true);
+	status = clSetKernelArg(kernel, 5, sizeof(int), &nColsOfVertices);
+	checkStatus("clSetKernelArg-F", status, true);
+  status = clSetKernelArg(kernel, 6, sizeof(float), &level);
+	checkStatus("clSetKernelArg-G", status, true);
+
+	
+	//-----------------------------------------------------
+	// Configure the work-item structure
+	//----------------------------------------------------- 
+
+  // NO CHANGE
+
+	//-----------------------------------------------------
+	// Enqueue the kernel for execution
+	//----------------------------------------------------- 
+
+	status = clEnqueueNDRangeKernel(cmdQueue, kernel,
+		numDimsToUse,
+		nullptr, globalWorkSize, // globalOffset, globalSize
+		localWorkSize,
+		0, nullptr, nullptr); // event information, if needed
+	checkStatus("clEnqueueNDRangeKernel", status, true);
+
+	//-----------------------------------------------------
+	// Read the output buffer back to the host
+	//----------------------------------------------------- 
+  
+  	
+  clEnqueueReadBuffer(cmdQueue, 
+		d_computeKernelEdgeCount, CL_TRUE, 0, sizeof(int), 
+		&numActualEdges, 0, nullptr, nullptr);
+
+  int numActualPoints = 2 * numActualEdges; // each edge is: (x,y), (x,y)
 	// Get the point coords back, storing them into "lines"
 	lines = new vec2[numActualPoints];
+
+
+	clEnqueueReadBuffer(cmdQueue, 
+		d_lineBuffer, CL_TRUE, 0, numActualEdges*4*sizeof(float), 
+		&lines, 0, nullptr, nullptr);
+
+	// block until all commands have finished execution
+
+	clFinish(cmdQueue);
+
+  //////////////////////////////////////////////////////////////////////////
+  //------------------ END COMPUTE KERNEL --------------------------------//
+  //////////////////////////////////////////////////////////////////////////
+
+
+  clReleaseKernel(kernel);
+	clReleaseProgram(program);
+  clReleaseMemObject(d_vertexBuffer);
+  clReleaseMemObject(d_lineBuffer);
+  clReleaseMemObject(d_computeKernelEdgeCount);
+
+	clReleaseCommandQueue(cmdQueue);
+	clReleaseContext(context);
+
+
+
+
+
+
+
+
+
+
+	
 	// Use CUDA or OpenCL code to retrieve the points, placing them into "lines".
 	// As a placeholder for now, we will just make an "X" over the area:
 	lines[0][0] = 0.0; lines[0][1] = 0.0;
@@ -345,6 +487,12 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 	// After the line end points have been returned from the device, delete the
 	// device buffer to prevent a memory leak.
 	// ... do it here ...
+  
+  delete [] platforms;
+	delete [] devices;
+
+  // Free host resources
+
 
 	// return number of coordinate pairs in "lines":
 	return numActualPoints;
