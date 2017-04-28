@@ -16,13 +16,13 @@ void computeEdges( __global float* d_vertexBuffer,
   size_t gridSize = get_global_size(0);
 
   for(int i = myCell; i < numCells; i += gridSize){
-    int myCol = myCell % (cols-1);
-    int myRow =(int)( myCell / (cols-1));
+    int myCol = i % (cols-1);
+    int myRow =(int)( i / (cols-1));
 
-    float blVal = d_vertexBuffer[myRow * cols * 2 + myCol*2];
-    float brVal = d_vertexBuffer[myRow * cols * 2 + myCol*2 + 1];
-    float tlVal = d_vertexBuffer[(myRow+1) * cols * 2 + myCol*2];
-    float trVal = d_vertexBuffer[(myRow+1) * cols * 2 + myCol*2 + 1];
+    float blVal = d_vertexBuffer[myRow * cols + myCol];
+    float brVal = d_vertexBuffer[myRow * cols + myCol + 1];
+    float tlVal = d_vertexBuffer[(myRow+1) * cols + myCol];
+    float trVal = d_vertexBuffer[(myRow+1) * cols + myCol + 1];
 
     // Bottom left point differs
     if( ( blVal < value &&
