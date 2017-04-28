@@ -16,37 +16,96 @@ void countEdges( __global float* d_vertexBuffer,
 
   size_t gridSize = get_global_size(0);
 
-  int numVertices = rows*cols;
-
-  int numAbove = 0;
-
   for(int i = myCell; i < numCells; i += gridSize){
 
-    if(d_vertexBuffer[(myRow * cols * 2) + myCol*2] > value){
-      numAbove++;
-    }
-    if(d_vertexBuffer[(myRow * cols * 2) + myCol*2 + 1] > value){
-      numAbove++;
-    }
-    if(d_vertexBuffer[((myRow+1) * cols * 2) + myCol*2 + 1] > value){
-      numAbove++;
-    }
-    if(d_vertexBuffer[((myRow+1) * cols * 2) + myCol*2 + 1] > value){
-      numAbove++;
-    }
+    float blVal = d_vertexBuffer[myRow * cols * 2 + myCol*2];
+    float brVal = d_vertexBuffer[myRow * cols * 2 + myCol*2 + 1];
+    float tlVal = d_vertexBuffer[(myRow+1) * cols * 2 + myCol*2];
+    float trVal = d_vertexBuffer[(myRow+1) * cols * 2 + myCol*2 + 1];
     
-    if( numAbove == 1 || numAbove == 3 ){
-      
-      atomic_inc(d_returnValue);  
+    // Bottom left point differs
+    if( ( blVal < value &&
+          brVal > value &&
+          tlVal > value &&
+          trVal > value ) ||
+        ( blVal > value &&
+          brVal < value &&
+          tlVal < value &&
+          trVal < value )
+        ){
+      atomic_inc(d_returnValue);
     }
-    if( numAbove == 2 ){ 
-      atomic_inc(d_returnValue);  
-      atomic_inc(d_returnValue);  
+    // Bottom Right point differs
+    if( ( blVal > value &&
+          brVal < value &&
+          tlVal > value &&
+          trVal > value ) ||
+        ( blVal < value &&
+          brVal > value &&
+          tlVal < value &&
+          trVal < value )
+        ){
+      atomic_inc(d_returnValue);
     }
-
-
-                
+    // Top left point differs
+    if( ( blVal > value &&
+          brVal > value &&
+          tlVal < value &&
+          trVal > value ) ||
+        ( blVal < value &&
+          brVal < value &&
+          tlVal > value &&
+          trVal < value )
+        ){
+      atomic_inc(d_returnValue);
+    }
+    // Top Right point differs
+    if( ( blVal > value &&
+          brVal > value &&
+          tlVal > value &&
+          trVal < value ) ||
+        ( blVal < value &&
+          brVal < value &&
+          tlVal < value &&
+          trVal > value )
+        ){
+      atomic_inc(d_returnValue);
+    }
+    // Left and Right differ
+    if( ( blVal < value &&
+          brVal > value &&
+          tlVal < value &&
+          trVal > value ) ||
+        ( blVal > value &&
+          brVal < value &&
+          tlVal > value &&
+          trVal < value )
+        ){
+      atomic_inc(d_returnValue);
+    }
+    // Top and Bottom differ
+    if( ( blVal > value &&
+          brVal > value &&
+          tlVal < value &&
+          trVal < value ) ||
+        ( blVal < value &&
+          brVal < value &&
+          tlVal > value &&
+          trVal > value )
+        ){
+      atomic_inc(d_returnValue);
+    }
+    // Caddy corner
+    if( ( blVal > value &&
+          brVal < value &&
+          tlVal < value &&
+          trVal > value ) ||
+        ( blVal < value &&
+          brVal > value &&
+          tlVal > value &&
+          trVal < value )
+        ){
+      atomic_add(d_returnValue, 2);
+    }
   }
-
-
 }
