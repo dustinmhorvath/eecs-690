@@ -190,7 +190,7 @@ int ContourGenerator::computeContourEdgesFor(float level, vec2*& lines)
   int numElements = nRowsOfVertices * nColsOfVertices;
 	int numEdges = 0;
 
-	size_t datasize = numElements*sizeof(vertexValues[0]);
+	size_t datasize = numElements*sizeof(float);
 	std::cout << "DATASIZE = " << datasize << "\n";
 
 	cl_mem d_vertexBuffer = clCreateBuffer( // Input array on the device
@@ -303,7 +303,7 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 	// Release OpenCL resources
 	//----------------------------------------------------- 
 
-  std::cout << "NUMEDGES = " << numEdges << "\n";
+  std::cout << "NUMEXPECTEDEDGES = " << numEdges << "\n";
 
 	// Free OpenCL resources
   // Here, we're only dropping the things relevant to the counting kernel
@@ -322,6 +322,7 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 
 	// Create space for the line end points on the device
 	int numExpectedPoints = 2 * numExpectedEdges; // each edge is: (x,y), (x,y)
+  int expectedNumCoordValues = numExpectedPoints * 2;
 
 
   //////////////////////////////////////////////////////////////////////////
@@ -332,27 +333,36 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 	// Create device buffers associated with the context
 	//----------------------------------------------------------
   
-  int expectedNumCoordValues = numExpectedPoints * 2;
   
   // Fire a kernel to compute the edge end points (determimes "numActualEdges")
 	int numActualEdges = 0;
 
-
 	size_t lineBufferSize = expectedNumCoordValues*sizeof(float);
   int computeKernelEdgeCount = 0;
+  int loc = 0;
 
   cl_mem d_lineBuffer = clCreateBuffer( // Output array on the device
     context, CL_MEM_WRITE_ONLY, lineBufferSize, nullptr, &status);
   checkStatus("clCreateBuffer-A", status, true);
 
   cl_mem d_computeKernelEdgeCount = clCreateBuffer( // Output array on the device
-    context, CL_MEM_WRITE_ONLY, sizeof(int), nullptr, &status);
+    context, CL_MEM_READ_WRITE, sizeof(int), nullptr, &status);
   checkStatus("clCreateBuffer-B", status, true);
 
+  cl_mem d_loc = clCreateBuffer( // Output array on the device
+    context, CL_MEM_READ_WRITE, sizeof(int), nullptr, &status);
+  checkStatus("clCreateBuffer-C", status, true);
+
+  // write values to buffers
 
   status = clEnqueueWriteBuffer(cmdQueue, 
 		d_computeKernelEdgeCount, CL_FALSE, 0, sizeof(int),
 		&numActualEdges, 0, nullptr, nullptr);
+	checkStatus("clEnqueueWriteBuffer-A", status, true);
+
+  status = clEnqueueWriteBuffer(cmdQueue, 
+		d_loc, CL_FALSE, 0, sizeof(int),
+		&loc, 0, nullptr, nullptr);
 	checkStatus("clEnqueueWriteBuffer-B", status, true);
 
 
@@ -396,15 +406,13 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 	// Set the kernel arguments
 	//----------------------------------------------------- 
 
-  int loc = 0;
-
 	status = clSetKernelArg(kernel, 0, sizeof(cl_mem), &d_vertexBuffer);
 	checkStatus("clSetKernelArg-A", status, true);
 	status = clSetKernelArg(kernel, 1, sizeof(cl_mem), &d_lineBuffer);
 	checkStatus("clSetKernelArg-B", status, true);
-  status = clSetKernelArg(kernel, 2, sizeof(int), &computeKernelEdgeCount);
+  status = clSetKernelArg(kernel, 2, sizeof(cl_mem), &d_computeKernelEdgeCount);
 	checkStatus("clSetKernelArg-C", status, true);
-  status = clSetKernelArg(kernel, 3, sizeof(int), &loc);
+  status = clSetKernelArg(kernel, 3, sizeof(cl_mem), &d_loc);
 	checkStatus("clSetKernelArg-D", status, true);
 	status = clSetKernelArg(kernel, 4, sizeof(int), &nRowsOfVertices);
 	checkStatus("clSetKernelArg-E", status, true);
@@ -434,20 +442,23 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 	//-----------------------------------------------------
 	// Read the output buffer back to the host
 	//----------------------------------------------------- 
-  
   	
   clEnqueueReadBuffer(cmdQueue, 
 		d_computeKernelEdgeCount, CL_TRUE, 0, sizeof(int), 
 		&numActualEdges, 0, nullptr, nullptr);
 
+  std::cout << "NUMACTUALEDGES = " << numActualEdges << "\n";
+
+
   int numActualPoints = 2 * numActualEdges; // each edge is: (x,y), (x,y)
 	// Get the point coords back, storing them into "lines"
+  float* linearLineBuffer = new float[numActualEdges];
 	lines = new vec2[numActualPoints];
 
 
 	clEnqueueReadBuffer(cmdQueue, 
 		d_lineBuffer, CL_TRUE, 0, numActualEdges*4*sizeof(float), 
-		&lines, 0, nullptr, nullptr);
+		&linearLineBuffer, 0, nullptr, nullptr);
 
 	// block until all commands have finished execution
 
@@ -458,15 +469,17 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
   //////////////////////////////////////////////////////////////////////////
 
 
-  clReleaseKernel(kernel);
+  // releasing these causes a segfault for some reason? hmm 
+  //clReleaseMemObject(d_vertexBuffer);
+  //clReleaseMemObject(d_lineBuffer);
+  //clReleaseMemObject(d_computeKernelEdgeCount);
 	clReleaseProgram(program);
-  clReleaseMemObject(d_vertexBuffer);
-  clReleaseMemObject(d_lineBuffer);
-  clReleaseMemObject(d_computeKernelEdgeCount);
+  clReleaseKernel(kernel);
 
 	clReleaseCommandQueue(cmdQueue);
 	clReleaseContext(context);
-
+  
+  
 
 
 
@@ -495,7 +508,7 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 
 
 	// return number of coordinate pairs in "lines":
-	return numActualPoints;
+	return 2;//numActualPoints;
 }
 
 void ContourGenerator::readData(std::ifstream& scalarFieldFile)
