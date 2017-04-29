@@ -24,7 +24,6 @@ void countEdges( __global float* d_vertexBuffer,
     float trVal = d_vertexBuffer[(myRow+1) * cols  + myCol + 1];
 
     if(blVal != -9999 && brVal != -9999 && tlVal != -9999 && trVal != -9999){
-    //if(blVal == -9999 || brVal == -9999 || tlVal == -9999 || trVal == -9999){
     
       // Bottom left point differs
       if( ( blVal < value &&
