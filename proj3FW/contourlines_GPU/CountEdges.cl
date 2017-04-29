@@ -23,93 +23,94 @@ void countEdges( __global float* d_vertexBuffer,
     float tlVal = d_vertexBuffer[(myRow+1) * cols  + myCol];
     float trVal = d_vertexBuffer[(myRow+1) * cols  + myCol + 1];
 
-    if(blVal == -9999 || brVal == -9999 || tlVal == -9999 || trVal == -9999){
-      break;
-    }
+    if(blVal != -9999 && brVal != -9999 && tlVal != -9999 && trVal != -9999){
+    //if(blVal == -9999 || brVal == -9999 || tlVal == -9999 || trVal == -9999){
     
-    // Bottom left point differs
-    if( ( blVal < value &&
-          brVal > value &&
-          tlVal > value &&
-          trVal > value ) ||
-        ( blVal > value &&
-          brVal < value &&
-          tlVal < value &&
-          trVal < value )
-        ){
-      atomic_inc(d_returnValue);
-    }
-    // Bottom Right point differs
-    if( ( blVal > value &&
-          brVal < value &&
-          tlVal > value &&
-          trVal > value ) ||
-        ( blVal < value &&
-          brVal > value &&
-          tlVal < value &&
-          trVal < value )
-        ){
-      atomic_inc(d_returnValue);
-    }
-    // Top left point differs
-    if( ( blVal > value &&
-          brVal > value &&
-          tlVal < value &&
-          trVal > value ) ||
-        ( blVal < value &&
-          brVal < value &&
-          tlVal > value &&
-          trVal < value )
-        ){
-      atomic_inc(d_returnValue);
-    }
-    // Top Right point differs
-    if( ( blVal > value &&
-          brVal > value &&
-          tlVal > value &&
-          trVal < value ) ||
-        ( blVal < value &&
-          brVal < value &&
-          tlVal < value &&
-          trVal > value )
-        ){
-      atomic_inc(d_returnValue);
-    }
-    // Left and Right differ
-    if( ( blVal < value &&
-          brVal > value &&
-          tlVal < value &&
-          trVal > value ) ||
-        ( blVal > value &&
-          brVal < value &&
-          tlVal > value &&
-          trVal < value )
-        ){
-      atomic_inc(d_returnValue);
-    }
-    // Top and Bottom differ
-    if( ( blVal > value &&
-          brVal > value &&
-          tlVal < value &&
-          trVal < value ) ||
-        ( blVal < value &&
-          brVal < value &&
-          tlVal > value &&
-          trVal > value )
-        ){
-      atomic_inc(d_returnValue);
-    }
-    // Caddy corner
-    if( ( blVal > value &&
-          brVal < value &&
-          tlVal < value &&
-          trVal > value ) ||
-        ( blVal < value &&
-          brVal > value &&
-          tlVal > value &&
-          trVal < value )
-        ){
-      atomic_add(d_returnValue, 2);
+      // Bottom left point differs
+      if( ( blVal < value &&
+            brVal > value &&
+            tlVal > value &&
+            trVal > value ) ||
+          ( blVal > value &&
+            brVal < value &&
+            tlVal < value &&
+            trVal < value )
+          ){
+        atomic_inc(d_returnValue);
+      }
+      // Bottom Right point differs
+      if( ( blVal > value &&
+            brVal < value &&
+            tlVal > value &&
+            trVal > value ) ||
+          ( blVal < value &&
+            brVal > value &&
+            tlVal < value &&
+            trVal < value )
+          ){
+        atomic_inc(d_returnValue);
+      }
+      // Top left point differs
+      if( ( blVal > value &&
+            brVal > value &&
+            tlVal < value &&
+            trVal > value ) ||
+          ( blVal < value &&
+            brVal < value &&
+            tlVal > value &&
+            trVal < value )
+          ){
+        atomic_inc(d_returnValue);
+      }
+      // Top Right point differs
+      if( ( blVal > value &&
+            brVal > value &&
+            tlVal > value &&
+            trVal < value ) ||
+          ( blVal < value &&
+            brVal < value &&
+            tlVal < value &&
+            trVal > value )
+          ){
+        atomic_inc(d_returnValue);
+      }
+      // Left and Right differ
+      if( ( blVal < value &&
+            brVal > value &&
+            tlVal < value &&
+            trVal > value ) ||
+          ( blVal > value &&
+            brVal < value &&
+            tlVal > value &&
+            trVal < value )
+          ){
+        atomic_inc(d_returnValue);
+      }
+      // Top and Bottom differ
+      if( ( blVal > value &&
+            brVal > value &&
+            tlVal < value &&
+            trVal < value ) ||
+          ( blVal < value &&
+            brVal < value &&
+            tlVal > value &&
+            trVal > value )
+          ){
+        atomic_inc(d_returnValue);
+      }
+      // Caddy corner
+      if( ( blVal > value &&
+            brVal < value &&
+            tlVal < value &&
+            trVal > value ) ||
+          ( blVal < value &&
+            brVal > value &&
+            tlVal > value &&
+            trVal < value )
+          ){
+        atomic_add(d_returnValue, 2);
+      }
+
     }
     
   }
