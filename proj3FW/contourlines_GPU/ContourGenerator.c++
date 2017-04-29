@@ -188,7 +188,7 @@ int ContourGenerator::computeContourEdgesFor(float level, vec2*& lines)
 	// Create device buffers associated with the context
 	//----------------------------------------------------------
   int numElements = nRowsOfVertices * nColsOfVertices;
-	int numEdges = 0;
+	int numExpectedEdges = 0;
 
 	size_t datasize = numElements*sizeof(float);
 	std::cout << "DATASIZE = " << datasize << "\n";
@@ -208,7 +208,7 @@ int ContourGenerator::computeContourEdgesFor(float level, vec2*& lines)
 
   status = clEnqueueWriteBuffer(cmdQueue, 
 		d_returnValue, CL_FALSE, 0, sizeof(int),
-		&numEdges, 0, nullptr, nullptr);
+		&numExpectedEdges, 0, nullptr, nullptr);
 	checkStatus("clEnqueueWriteBuffer-B", status, true);
 
 
@@ -270,7 +270,7 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 
   // TODO: too many kernels for smaller maps and not enough for big
 	size_t localWorkSize[] = { 16, 16 };    
-	size_t globalWorkSize[] = { 256 * 256 };
+	size_t globalWorkSize[] = { 256, 256 };
 	if (numDimsToUse == 1)
 		localWorkSize[0] = 32;
 	else if (numDimsToUse == 2)
@@ -293,7 +293,7 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 
 	clEnqueueReadBuffer(cmdQueue, 
 		d_returnValue, CL_TRUE, 0, sizeof(int), 
-		&numEdges, 0, nullptr, nullptr);
+		&numExpectedEdges, 0, nullptr, nullptr);
 
 	// block until all commands have finished execution
 
@@ -303,7 +303,7 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 	// Release OpenCL resources
 	//----------------------------------------------------- 
 
-  std::cout << "NUMEXPECTEDEDGES = " << numEdges << "\n";
+  std::cout << "NUMEXPECTEDEDGES = " << numExpectedEdges << "\n";
 
 	// Free OpenCL resources
   // Here, we're only dropping the things relevant to the counting kernel
@@ -311,19 +311,14 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 	clReleaseProgram(program);
   //I think we can reuse this vertex buffer.
   //clReleaseMemObject(d_vertexBuffer);
-  clReleaseMemObject(d_returnValue);
+  //clReleaseMemObject(d_returnValue);
 
   //////////////////////////////////////////////////////////////////////////
   //------------------ END COUNTING KERNEL -------------------------------//
   //////////////////////////////////////////////////////////////////////////
 
-  // Fire a kernel to determine expected number of edges at the given "level'
-	int numExpectedEdges = numEdges;
 
-	// Create space for the line end points on the device
-	int numExpectedPoints = 2 * numExpectedEdges; // each edge is: (x,y), (x,y)
-  int expectedNumCoordValues = numExpectedPoints * 2;
-
+	
 
   //////////////////////////////////////////////////////////////////////////
   //------------------ START COMPUTE KERNEL ------------------------------//
@@ -332,7 +327,11 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
   //----------------------------------------------------------
 	// Create device buffers associated with the context
 	//----------------------------------------------------------
-  
+
+  // Create space for the line end points on the device
+	int numExpectedPoints = 2 * numExpectedEdges; // each edge is: (x,y), (x,y)
+  int expectedNumCoordValues = numExpectedPoints * 2;
+
   
   // Fire a kernel to compute the edge end points (determimes "numActualEdges")
 	int numActualEdges = 0;
@@ -451,14 +450,16 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 
 
   int numActualPoints = 2 * numActualEdges; // each edge is: (x,y), (x,y)
+  int numActualCoords = 2 * numActualPoints;
 	// Get the point coords back, storing them into "lines"
-  float* linearLineBuffer = new float[numActualEdges];
+  float* linearLineBuffer = new float[numActualCoords];
 	lines = new vec2[numActualPoints];
 
+	// Use CUDA or OpenCL code to retrieve the points, placing them into "lines".
 
 	clEnqueueReadBuffer(cmdQueue, 
-		d_lineBuffer, CL_TRUE, 0, numActualEdges*4*sizeof(float), 
-		&linearLineBuffer, 0, nullptr, nullptr);
+		d_lineBuffer, CL_TRUE, 0, numActualCoords*sizeof(float), 
+		linearLineBuffer, 0, nullptr, nullptr);
 
 	// block until all commands have finished execution
 
@@ -485,18 +486,14 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 
 
 
+  for(int i = 0; i < numActualPoints; i++){
+    lines[i][0] = linearLineBuffer[2*i];
+    lines[i][1] = linearLineBuffer[2*i + 1];
+  }
 
-
-
-
+  delete [] linearLineBuffer;
 	
-	// Use CUDA or OpenCL code to retrieve the points, placing them into "lines".
-	// As a placeholder for now, we will just make an "X" over the area:
-	lines[0][0] = 0.0; lines[0][1] = 0.0;
-	lines[1][0] = nColsOfVertices - 1.0; lines[1][1] = nRowsOfVertices - 1.0;
-	lines[2][0] = 0.0; lines[2][1] = nRowsOfVertices - 1.0;
-	lines[3][0] = nColsOfVertices - 1.0; lines[3][1] = 0.0;
-
+	
 	// After the line end points have been returned from the device, delete the
 	// device buffer to prevent a memory leak.
 	// ... do it here ...
@@ -508,7 +505,7 @@ if (status == CL_BUILD_PROGRAM_FAILURE) {
 
 
 	// return number of coordinate pairs in "lines":
-	return 2;//numActualPoints;
+	return numActualPoints;
 }
 
 void ContourGenerator::readData(std::ifstream& scalarFieldFile)
